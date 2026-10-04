@@ -9,6 +9,8 @@ export class RealtimeClient {
   private socket: WebSocket | null = null;
   private retry = 0;
   private timer = 0;
+  private heartbeat = 0;
+  private lastPong = 0;
   constructor(
     private session: SessionData,
     private handlers: RealtimeHandlers,
@@ -22,16 +24,23 @@ export class RealtimeClient {
     );
     this.socket.onopen = () => {
       this.retry = 0;
+      this.lastPong = Date.now();
       this.handlers.status("online");
+      this.startHeartbeat();
     };
     this.socket.onmessage = (message) => {
       try {
-        this.handlers.event(JSON.parse(message.data));
+        const event = JSON.parse(message.data);
+        if (event.type === "pong" || event.type === "connection.ready") {
+          this.lastPong = Date.now();
+        }
+        this.handlers.event(event);
       } catch {
         /* ignored */
       }
     };
     this.socket.onclose = () => {
+      window.clearInterval(this.heartbeat);
       this.handlers.status("offline");
       this.timer = window.setTimeout(
         () => this.connect(),
@@ -39,6 +48,9 @@ export class RealtimeClient {
       );
     };
     this.socket.onerror = () => this.socket?.close();
+  }
+  updateSession(session: SessionData): void {
+    this.session = session;
   }
   send(event: Record<string, unknown>): boolean {
     if (this.socket?.readyState !== WebSocket.OPEN) return false;
@@ -65,10 +77,23 @@ export class RealtimeClient {
   }
   close(): void {
     clearTimeout(this.timer);
+    window.clearInterval(this.heartbeat);
     if (this.socket) {
       this.socket.onclose = null;
       this.socket.close();
     }
     this.socket = null;
+  }
+
+  private startHeartbeat(): void {
+    window.clearInterval(this.heartbeat);
+    this.heartbeat = window.setInterval(() => {
+      if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+      if (Date.now() - this.lastPong > 45_000) {
+        this.socket.close();
+        return;
+      }
+      this.socket.send(JSON.stringify({ type: "ping" }));
+    }, 20_000);
   }
 }

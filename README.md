@@ -4,7 +4,7 @@ Canal de chat incorporável para o [Mautic Omnichannel Inbox](https://github.com
 
 ![Configuração do Web Chat no Mautic](docs/screenshots/webchat-admin.jpg)
 
-## O que a versão 1.0 entrega
+## O que entrega
 
 - widget responsivo e isolado em `iframe`, instalado por uma única tag `script`;
 - sessão retomável, histórico durável e identificação opcional por nome e e-mail;
@@ -16,7 +16,10 @@ Canal de chat incorporável para o [Mautic Omnichannel Inbox](https://github.com
 - agente identificado pelo nome durante digitação e respostas;
 - criação ou vínculo do contato Mautic para uso do estágio do funil;
 - configuração visual, lista de domínios permitidos, conta de apoio e página de demonstração;
-- recuperação por HTTP quando o WebSocket estiver momentaneamente indisponível.
+- recuperação por HTTP quando o WebSocket estiver momentaneamente indisponível;
+- heartbeat e sincronização do histórico quando a aba volta ao primeiro plano;
+- contador de mensagens não lidas e aviso sonoro para novas respostas;
+- adaptação à área visível do teclado virtual em dispositivos móveis.
 
 ## Fluxo
 

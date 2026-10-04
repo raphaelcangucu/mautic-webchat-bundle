@@ -31,6 +31,8 @@
   let unread = 0;
   let list: HTMLDivElement;
   let typingTimer = 0;
+  let recovering = false;
+  let audioContext: AudioContext | null = null;
 
   const stored = () => ({
     resume_session: localStorage.getItem(`mw-session:${publicKey}`) || "",
@@ -50,9 +52,61 @@
   const tellParent = (message: Record<string, unknown>) =>
     window.parent.postMessage(message, parentOrigin);
 
+  function setUnread(value: number): void {
+    unread = Math.max(0, value);
+    tellParent({ type: "webchat.unread", count: unread });
+  }
+
+  function unlockSound(): boolean {
+    try {
+      const AudioConstructor =
+        window.AudioContext ||
+        (
+          window as typeof window & {
+            webkitAudioContext?: typeof AudioContext;
+          }
+        ).webkitAudioContext;
+      if (!AudioConstructor) return false;
+      audioContext ||= new AudioConstructor();
+      if (audioContext.state === "suspended") void audioContext.resume();
+      return audioContext.state === "running";
+    } catch {
+      return false;
+    }
+  }
+
+  function playNotification(): void {
+    const played = unlockSound();
+    if (played && audioContext) {
+      const now = audioContext.currentTime;
+      [0, 0.12].forEach((delay, index) => {
+        const oscillator = audioContext!.createOscillator();
+        const gain = audioContext!.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = index ? 740 : 620;
+        gain.gain.setValueAtTime(0.0001, now + delay);
+        gain.gain.exponentialRampToValueAtTime(0.055, now + delay + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + 0.13);
+        oscillator.connect(gain);
+        gain.connect(audioContext!.destination);
+        oscillator.start(now + delay);
+        oscillator.stop(now + delay + 0.14);
+      });
+    }
+    tellParent({ type: "webchat.notification", unread, played });
+  }
+
+  function unreadFrom(data: SessionData): number {
+    const lastRead = Number(data.visitor_last_read_message_id || 0);
+    return data.messages.filter(
+      (message) => message.direction !== "visitor" && message.id > lastRead,
+    ).length;
+  }
+
   function setOpen(value: boolean): void {
+    unlockSound();
     open = value;
-    unread = open ? 0 : unread;
+    if (open) setUnread(0);
     tellParent({ type: "webchat.resize", open });
     tellParent({ type: "webchat.state", open });
     if (open) markRead();
@@ -119,6 +173,7 @@
       session = data as SessionData;
       config = session.widget;
       messages = session.messages;
+      setUnread(open && !document.hidden ? 0 : unreadFrom(session));
       started = true;
       localStorage.setItem(`mw-session:${publicKey}`, session.session);
       localStorage.setItem(`mw-token:${publicKey}`, session.session_token);
@@ -139,6 +194,7 @@
     realtime = new RealtimeClient(session, {
       status(value) {
         connection = value;
+        if (value === "online") void recoverHistory();
       },
       event(event) {
         if (event.type === "message.created" && event.message) {
@@ -146,6 +202,7 @@
           const existing = messages.findIndex(
             (item) => item.client_id === message.client_id,
           );
+          const isNew = existing < 0;
           messages =
             existing >= 0
               ? messages.map((item, index) =>
@@ -153,9 +210,12 @@
                 )
               : [...messages, message];
           if (message.direction !== "visitor") {
-            realtime?.receipt("delivered", message);
             if (open && !document.hidden) realtime?.receipt("read", message);
-            else unread += 1;
+            else {
+              realtime?.receipt("delivered", message);
+              if (isNew) setUnread(unread + 1);
+            }
+            if (isNew) playNotification();
           }
         } else if (
           (event.type === "message.delivered" ||
@@ -186,7 +246,66 @@
     realtime.connect();
   }
 
+  async function recoverHistory(): Promise<void> {
+    if (!bootstrap || !session || recovering) return;
+    recovering = true;
+    const previousIncomingId = messages.reduce(
+      (latest, message) =>
+        message.direction === "visitor" ? latest : Math.max(latest, message.id),
+      0,
+    );
+    try {
+      const response = await fetch(
+        `/chat/api/${encodeURIComponent(publicKey)}/sessions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...stored(),
+            visitor_id: visitorId(),
+            name: name.trim(),
+            email: email.trim(),
+            site_origin: bootstrap.siteOrigin,
+            page_url: bootstrap.pageUrl,
+            referrer: bootstrap.referrer,
+            utm: bootstrap.utm,
+          }),
+        },
+      );
+      if (!response.ok) return;
+      const refreshed = (await response.json()) as SessionData;
+      const pending = messages.filter(
+        (message) =>
+          message.id < 0 &&
+          !refreshed.messages.some(
+            (candidate) => candidate.client_id === message.client_id,
+          ),
+      );
+      const latestIncomingId = refreshed.messages.reduce(
+        (latest, message) =>
+          message.direction === "visitor"
+            ? latest
+            : Math.max(latest, message.id),
+        0,
+      );
+      session = refreshed;
+      config = refreshed.widget;
+      messages = [...refreshed.messages, ...pending];
+      realtime?.updateSession(refreshed);
+      setUnread(open && !document.hidden ? 0 : unreadFrom(refreshed));
+      if (latestIncomingId > previousIncomingId) {
+        playNotification();
+      }
+      markRead();
+    } catch {
+      // The WebSocket retry will request durable history again on reconnect.
+    } finally {
+      recovering = false;
+    }
+  }
+
   async function send(): Promise<void> {
+    unlockSound();
     const text = body.trim();
     if (!text || !session) return;
     const clientId = uid();
@@ -296,7 +415,10 @@
       else if (event.data.action === "identify") identify(event.data.user);
       else if (event.data.action === "reset") reset();
     };
-    const visible = () => markRead();
+    const visible = () => {
+      if (!document.hidden && started) void recoverHistory();
+      markRead();
+    };
     window.addEventListener("message", onMessage);
     window.addEventListener("focus", visible);
     document.addEventListener("visibilitychange", visible);
@@ -314,17 +436,24 @@
   onDestroy(() => {
     realtime?.close();
     clearTimeout(typingTimer);
+    if (audioContext) void audioContext.close();
   });
 </script>
 
 {#if !open}
-  <button class="launcher" on:click={toggle} aria-label="Abrir atendimento">
+  <button
+    class="launcher"
+    on:click={toggle}
+    aria-label={unread
+      ? `Abrir atendimento, ${unread} ${unread === 1 ? "mensagem não lida" : "mensagens não lidas"}`
+      : "Abrir atendimento"}
+  >
     <svg viewBox="0 0 24 24" aria-hidden="true"
       ><path
         d="M20 11.5a7.5 7.5 0 0 1-8 7.48 8.6 8.6 0 0 1-3.7-.82L4 20l1.37-3.66A7.5 7.5 0 1 1 20 11.5Z"
       /></svg
     >
-    {#if unread}<span class="unread">{unread}</span>{/if}
+    {#if unread}<span class="unread">{unread > 99 ? "99+" : unread}</span>{/if}
   </button>
 {:else}
   <section class="panel" aria-label="Atendimento online">
@@ -425,6 +554,7 @@
           maxlength="4000"
           placeholder="Escreva uma mensagem"
           aria-label="Mensagem"
+          on:focus={unlockSound}
           on:keydown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
@@ -471,8 +601,8 @@
   }
   .launcher {
     position: absolute;
-    right: 4px;
-    bottom: 4px;
+    right: 20px;
+    bottom: 20px;
     width: 64px;
     height: 64px;
     border: 0;
@@ -482,8 +612,7 @@
     display: grid;
     place-items: center;
     cursor: pointer;
-    box-shadow: 0 13px 34px
-      color-mix(in srgb, var(--wc-accent) 35%, transparent);
+    box-shadow: 0 9px 22px color-mix(in srgb, var(--wc-accent) 30%, transparent);
     transition: transform 0.18s ease;
   }
   .launcher:hover {
@@ -627,7 +756,9 @@
     padding: 0 12px;
     border: 1px solid #dce1eb;
     border-radius: 11px;
-    font: 16px/1.35 inherit;
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 1.35;
   }
   .welcome input:focus {
     border-color: var(--wc-accent);
@@ -787,7 +918,9 @@
     padding: 10px 12px;
     border: 1px solid #dfe3eb;
     border-radius: 12px;
-    font: 16px/1.35 inherit;
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 1.35;
     touch-action: manipulation;
     -webkit-text-size-adjust: 100%;
   }

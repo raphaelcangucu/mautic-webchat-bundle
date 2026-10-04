@@ -107,6 +107,7 @@ final class ChatService
             'session' => $session->getPublicId(),
             'session_token' => $plainToken,
             'realtime' => $this->tokens->issue($session->getPublicId(), 'visitor'),
+            'visitor_last_read_message_id' => $session->getVisitorLastReadMessageId(),
             'widget' => $this->widgetData($widget),
             'messages' => $this->history($session),
         ];

@@ -18,6 +18,7 @@ export interface ChatMessage {
 export interface SessionData {
   session: string;
   session_token: string;
+  visitor_last_read_message_id?: number | null;
   realtime: { token: string; url: string; expires_at: string };
   widget: WidgetConfig;
   messages: ChatMessage[];
