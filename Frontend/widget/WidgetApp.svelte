@@ -26,6 +26,7 @@
   let realtime: RealtimeClient | null = null;
   let connection: "connecting" | "online" | "offline" = "connecting";
   let agentTyping = false;
+  let agentTypingName = "Atendimento";
   let agentOnline = false;
   let unread = 0;
   let list: HTMLDivElement;
@@ -141,9 +142,10 @@
               ? { ...item, status }
               : item,
           );
-        } else if (event.type === "typing.started" && event.role === "agent")
+        } else if (event.type === "typing.started" && event.role === "agent") {
+          agentTypingName = String(event.name || "Atendimento");
           agentTyping = true;
-        else if (event.type === "typing.stopped" && event.role === "agent")
+        } else if (event.type === "typing.stopped" && event.role === "agent")
           agentTyping = false;
         else if (event.type === "presence.changed" && event.role === "agent")
           agentOnline = Boolean(event.online);
@@ -366,7 +368,7 @@
         {/each}
         {#if agentTyping}<div class="typing">
             <span></span><span></span><span></span><em
-              >Atendimento está digitando…</em
+              >{agentTypingName} está digitando…</em
             >
           </div>{/if}
       </div>
