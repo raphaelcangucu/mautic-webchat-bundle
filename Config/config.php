@@ -21,6 +21,7 @@ return [
             'mautic_webchat_health' => ['path' => '/webchat/api/realtime/health', 'controller' => AdminController::class.'::health', 'method' => 'GET'],
         ],
         'public' => [
+            'mautic_webchat_embed' => ['path' => '/chat/embed.js', 'controller' => PublicController::class.'::loader', 'method' => 'GET', 'defaults' => ['_stateless' => true]],
             'mautic_webchat_loader' => ['path' => '/chat/generate.js', 'controller' => PublicController::class.'::loader', 'method' => 'GET', 'defaults' => ['_stateless' => true]],
             'mautic_webchat_widget' => ['path' => '/chat/widget/{publicKey}', 'controller' => PublicController::class.'::widget', 'method' => 'GET', 'defaults' => ['_stateless' => true], 'requirements' => ['publicKey' => 'pub_[a-zA-Z0-9_-]+']],
             'mautic_webchat_demo' => ['path' => '/chat/demo/{publicKey}', 'controller' => PublicController::class.'::demo', 'method' => 'GET', 'defaults' => ['_stateless' => true], 'requirements' => ['publicKey' => 'pub_[a-zA-Z0-9_-]+']],

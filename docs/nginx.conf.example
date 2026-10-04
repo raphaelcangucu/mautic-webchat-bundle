@@ -1,4 +1,24 @@
-# Add this location inside the HTTPS server block of the Mautic host.
+# Define once in the Nginx `http` block (for example, conf.d/webchat-cache.conf).
+fastcgi_cache_path /var/cache/nginx/mautic-webchat
+    levels=1:2
+    keys_zone=MAUTIC_WEBCHAT:10m
+    inactive=60m
+    max_size=100m;
+
+# Add these locations to the HTTPS server block of the Mautic host.
+location = /chat/embed.js {
+    try_files /__mautic_webchat_dynamic__ @mautic_webchat_public;
+}
+
+# Compatibility alias for existing embeds.
+location = /chat/generate.js {
+    try_files /__mautic_webchat_dynamic__ @mautic_webchat_public;
+}
+
+location ~ ^/chat/(?:widget|demo)/pub_[A-Za-z0-9_-]+$ {
+    try_files /__mautic_webchat_dynamic__ @mautic_webchat_public;
+}
+
 location /chat/realtime {
     proxy_pass http://127.0.0.1:8790;
     proxy_http_version 1.1;
@@ -9,4 +29,29 @@ location /chat/realtime {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_read_timeout 75s;
     proxy_send_timeout 75s;
+    proxy_buffering off;
 }
+
+location @mautic_webchat_public {
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+    fastcgi_param SCRIPT_NAME /index.php;
+    fastcgi_param REQUEST_URI $request_uri;
+    # Replace with the PHP-FPM endpoint used by this Mautic host.
+    fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+
+    fastcgi_cache MAUTIC_WEBCHAT;
+    fastcgi_cache_key "$scheme$request_method$host$request_uri";
+    fastcgi_cache_methods GET HEAD;
+    fastcgi_cache_valid 200 5m;
+    fastcgi_cache_valid 404 10s;
+    fastcgi_cache_lock on;
+    fastcgi_cache_background_update on;
+    fastcgi_cache_use_stale updating error timeout invalid_header http_500 http_503;
+    # These routes contain only public widget configuration. Never apply this to /chat/api/*.
+    fastcgi_ignore_headers Cache-Control Expires Set-Cookie;
+    fastcgi_hide_header Set-Cookie;
+    add_header X-WebChat-Cache $upstream_cache_status always;
+}
+
+# Keep /chat/api/* on the normal Mautic PHP location. Never cache it.

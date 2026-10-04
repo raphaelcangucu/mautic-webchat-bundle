@@ -105,7 +105,7 @@ final class AdminController extends CommonController
     /** @return array<string,mixed> */
     private function widget(ChatWidget $widget): array
     {
-        $loader = $this->generateUrl('mautic_webchat_loader', ['id' => $widget->getPublicKey()], UrlGeneratorInterface::ABSOLUTE_URL);
+        $loader = $this->generateUrl('mautic_webchat_embed', ['id' => $widget->getPublicKey()], UrlGeneratorInterface::ABSOLUTE_URL);
         return [
             'id' => (int) $widget->getId(), 'name' => $widget->getName(), 'public_key' => $widget->getPublicKey(), 'published' => $widget->isPublished(),
             'allowed_domains' => $widget->getAllowedDomains(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(),

@@ -62,7 +62,7 @@ JS;
         if (!$widget instanceof ChatWidget) {
             return new Response('Chat indisponível.', 404);
         }
-        return $this->render('@MauticWebChat/Public/demo.html.twig', ['widget' => $widget, 'loaderUrl' => $this->generateUrl('mautic_webchat_loader', ['id' => $publicKey], UrlGeneratorInterface::ABSOLUTE_URL)]);
+        return $this->render('@MauticWebChat/Public/demo.html.twig', ['widget' => $widget, 'loaderUrl' => $this->generateUrl('mautic_webchat_embed', ['id' => $publicKey], UrlGeneratorInterface::ABSOLUTE_URL)]);
     }
 
     public function session(string $publicKey, Request $request, ChatWidgetRepository $widgets, ChatService $chat): JsonResponse
