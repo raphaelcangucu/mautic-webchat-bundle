@@ -12,7 +12,6 @@ use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigura
 return function (ContainerConfigurator $configurator): void {
     $services = $configurator->services()->defaults()->autowire()->autoconfigure()->public();
     $excludes = MauticCoreExtension::DEFAULT_EXCLUDES;
-    $excludes[] = 'Realtime';
     $services->load('MauticPlugin\\MauticWebChatBundle\\', '../')->exclude('../{'.implode(',', $excludes).'}');
     $services->load('MauticPlugin\\MauticWebChatBundle\\Entity\\', '../Entity/*Repository.php')
         ->tag(ServiceRepositoryCompilerPass::REPOSITORY_SERVICE_TAG);
