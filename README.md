@@ -104,6 +104,24 @@ Abra **Web Chat** no menu do Mautic, crie um widget, selecione a conta usada pel
 
 `/chat/generate.js` permanece como alias de compatibilidade. Use `/chat/embed.js` em novas instalações para evitar bloqueadores que classificam nomes genéricos como scripts de anúncios.
 
+### API JavaScript para aplicações reativas
+
+O loader publica `window.MauticWebChat` e mantém comandos em fila enquanto o `iframe` inicia. Isso permite integrar botões e usuários autenticados de React, Vue, Svelte ou JavaScript simples sem acessar o conteúdo interno do frame:
+
+```js
+window.MauticWebChat?.identify({
+  name: usuario.nome,
+  email: usuario.email,
+});
+window.MauticWebChat?.open();
+window.MauticWebChat?.openWithMessage('Preciso de ajuda com meu cadastro');
+window.MauticWebChat?.close();
+window.MauticWebChat?.toggle();
+window.MauticWebChat?.reset();
+```
+
+O site pode sincronizar sua interface com os eventos `mautic-webchat:ready`, `mautic-webchat:open`, `mautic-webchat:close` e `mautic-webchat:error`. `destroy()` remove o `iframe`, os listeners e a API global.
+
 ## Integração com o Inbox e a IA
 
 O plugin não duplica a lógica de atendimento. A conversa aparece com o badge **Web Chat** e pode ser assumida, transferida, adiada ou resolvida no Inbox. Mensagens humanas e da IA passam pelo mesmo transporte; notas internas não chegam ao visitante.

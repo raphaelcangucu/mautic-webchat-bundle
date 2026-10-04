@@ -27,4 +27,6 @@ export interface Bootstrap {
   pageUrl: string;
   referrer: string;
   utm: Record<string, string>;
+  user?: { name?: string; email?: string };
+  message?: string;
 }

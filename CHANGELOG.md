@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 - 2026-10-04
+
+- API pública `window.MauticWebChat` para abrir, fechar, alternar e reiniciar o widget em aplicações reativas.
+- Identificação antecipada do visitante autenticado e preenchimento de mensagem ao abrir o atendimento.
+- Eventos de prontidão, abertura, fechamento e erro para integração com o estado do aplicativo hospedeiro.
+
 ## 1.0.0 - 2026-10-04
 
 - Primeiro canal de Web Chat em tempo real para o Mautic Omnichannel Inbox.

@@ -24,14 +24,32 @@ final class PublicController extends CommonController
         $frame = $this->generateUrl('mautic_webchat_widget', ['publicKey' => $widget->getPublicKey()], UrlGeneratorInterface::ABSOLUTE_URL);
         $script = <<<'JS'
 (function(){
-  if(window.__mauticWebChatLoaded)return;window.__mauticWebChatLoaded=true;
+  if(window.MauticWebChat)return;
+  var ready=false,pending=[],identity={},draft='';
   var frame=document.createElement('iframe');frame.src=FRAME_URL;frame.title='Atendimento';frame.setAttribute('allow','clipboard-write');
   frame.style.cssText='position:fixed;z-index:2147483000;right:16px;bottom:16px;width:76px;height:76px;border:0;background:transparent;color-scheme:light;';
-  frame.dataset.mauticWebchat='1';document.body.appendChild(frame);
-  window.addEventListener('message',function(event){if(event.source!==frame.contentWindow)return;
-    if(event.data&&event.data.type==='webchat.ready')frame.contentWindow.postMessage({type:'webchat.bootstrap',siteOrigin:location.origin,pageUrl:location.href,referrer:document.referrer,utm:Object.fromEntries(new URLSearchParams(location.search))},event.origin);
+  frame.dataset.mauticWebchat='1';document.body.appendChild(frame);var targetOrigin=new URL(FRAME_URL).origin;
+  function emit(name,detail){window.dispatchEvent(new CustomEvent('mautic-webchat:'+name,{detail:detail||{}}));}
+  function command(action,payload){var message=Object.assign({type:'webchat.command',action:action},payload||{});if(ready&&frame.contentWindow)frame.contentWindow.postMessage(message,targetOrigin);else pending.push(message);}
+  var api={
+    isReady:function(){return ready;},
+    open:function(){command('open');},close:function(){command('close');},toggle:function(){command('toggle');},
+    openWithMessage:function(message){draft=String(message||'');command('open',{message:draft});},
+    identify:function(user){identity=Object.assign({},identity,user||{});command('identify',{user:identity});},
+    reset:function(){identity={};draft='';command('reset');},
+    destroy:function(){window.removeEventListener('message',onMessage);frame.remove();delete window.MauticWebChat;}
+  };
+  window.MauticWebChat=api;
+  function onMessage(event){if(event.source!==frame.contentWindow||event.origin!==targetOrigin)return;
+    if(event.data&&event.data.type==='webchat.ready'){
+      ready=true;frame.contentWindow.postMessage({type:'webchat.bootstrap',siteOrigin:location.origin,pageUrl:location.href,referrer:document.referrer,utm:Object.fromEntries(new URLSearchParams(location.search)),user:identity,message:draft},targetOrigin);
+      pending.splice(0).forEach(function(message){frame.contentWindow.postMessage(message,targetOrigin);});emit('ready');
+    }
     if(event.data&&event.data.type==='webchat.resize'){var open=!!event.data.open;frame.style.width=open?(innerWidth<520?'calc(100vw - 16px)':'400px'):'76px';frame.style.height=open?(innerWidth<520?'calc(100vh - 16px)':'min(680px, calc(100vh - 32px))'):'76px';frame.style.right=open&&innerWidth<520?'8px':'16px';frame.style.bottom=open&&innerWidth<520?'8px':'16px';}
-  });
+    if(event.data&&event.data.type==='webchat.state')emit(event.data.open?'open':'close',{open:!!event.data.open});
+    if(event.data&&event.data.type==='webchat.error')emit('error',{message:String(event.data.message||'Erro no WebChat')});
+  }
+  window.addEventListener('message',onMessage);
 })();
 JS;
         $script = str_replace('FRAME_URL', json_encode($frame, JSON_THROW_ON_ERROR), $script);

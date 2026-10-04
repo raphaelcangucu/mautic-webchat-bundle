@@ -50,11 +50,37 @@
   const tellParent = (message: Record<string, unknown>) =>
     window.parent.postMessage(message, parentOrigin);
 
-  function toggle(): void {
-    open = !open;
+  function setOpen(value: boolean): void {
+    open = value;
     unread = open ? 0 : unread;
     tellParent({ type: "webchat.resize", open });
+    tellParent({ type: "webchat.state", open });
     if (open) markRead();
+  }
+
+  function toggle(): void {
+    setOpen(!open);
+  }
+
+  function identify(user: { name?: string; email?: string } = {}): void {
+    if (user.name) name = String(user.name);
+    if (user.email) email = String(user.email);
+  }
+
+  function reset(): void {
+    realtime?.close();
+    realtime = null;
+    session = null;
+    messages = [];
+    started = false;
+    name = "";
+    email = "";
+    body = "";
+    error = "";
+    ["session", "token", "name", "email", "visitor"].forEach((key) =>
+      localStorage.removeItem(`mw-${key}:${publicKey}`),
+    );
+    setOpen(false);
   }
 
   async function start(): Promise<void> {
@@ -241,19 +267,34 @@
       config.accent_color || "#4e5ba6",
     );
     const onMessage = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      if (event.data?.type === "webchat.bootstrap") {
+        parentOrigin = event.origin;
+        bootstrap = {
+          siteOrigin: event.origin,
+          pageUrl: String(event.data.pageUrl || ""),
+          referrer: String(event.data.referrer || ""),
+          utm: event.data.utm || {},
+          user: event.data.user || {},
+          message: String(event.data.message || ""),
+        };
+        identify(bootstrap.user);
+        if (bootstrap.message) body = bootstrap.message;
+        if (stored().resume_session && stored().resume_token) void start();
+        return;
+      }
       if (
-        event.source !== window.parent ||
-        event.data?.type !== "webchat.bootstrap"
+        event.origin !== parentOrigin ||
+        event.data?.type !== "webchat.command"
       )
         return;
-      parentOrigin = event.origin;
-      bootstrap = {
-        siteOrigin: event.origin,
-        pageUrl: String(event.data.pageUrl || ""),
-        referrer: String(event.data.referrer || ""),
-        utm: event.data.utm || {},
-      };
-      if (stored().resume_session && stored().resume_token) void start();
+      if (event.data.action === "open") {
+        if (event.data.message) body = String(event.data.message);
+        setOpen(true);
+      } else if (event.data.action === "close") setOpen(false);
+      else if (event.data.action === "toggle") toggle();
+      else if (event.data.action === "identify") identify(event.data.user);
+      else if (event.data.action === "reset") reset();
     };
     const visible = () => markRead();
     window.addEventListener("message", onMessage);
