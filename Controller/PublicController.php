@@ -25,10 +25,20 @@ final class PublicController extends CommonController
         $script = <<<'JS'
 (function(){
   if(window.MauticWebChat)return;
-  var ready=false,pending=[],identity={},draft='';
+  var ready=false,pending=[],identity={},draft='',isOpen=false;
   var frame=document.createElement('iframe');frame.src=FRAME_URL;frame.title='Atendimento';frame.setAttribute('allow','clipboard-write');
   frame.style.cssText='position:fixed;z-index:2147483000;right:16px;bottom:16px;width:76px;height:76px;border:0;background:transparent;color-scheme:light;';
   frame.dataset.mauticWebchat='1';document.body.appendChild(frame);var targetOrigin=new URL(FRAME_URL).origin;
+  function viewportBox(){var viewport=window.visualViewport;return{width:Math.round(viewport?viewport.width:innerWidth),height:Math.round(viewport?viewport.height:innerHeight),left:Math.round(viewport?viewport.offsetLeft:0),top:Math.round(viewport?viewport.offsetTop:0)};}
+  function placeFrame(){
+    if(!isOpen){frame.style.left='auto';frame.style.top='auto';frame.style.right='16px';frame.style.bottom='16px';frame.style.width='76px';frame.style.height='76px';return;}
+    var viewport=viewportBox();
+    if(viewport.width<520){frame.style.left=(viewport.left+8)+'px';frame.style.top=(viewport.top+8)+'px';frame.style.right='auto';frame.style.bottom='auto';frame.style.width=Math.max(0,viewport.width-16)+'px';frame.style.height=Math.max(0,viewport.height-16)+'px';return;}
+    frame.style.left='auto';frame.style.top='auto';frame.style.right='16px';frame.style.bottom='16px';frame.style.width='400px';frame.style.height=Math.min(680,Math.max(0,viewport.height-32))+'px';
+  }
+  function onViewportChange(){if(isOpen)placeFrame();}
+  window.addEventListener('resize',onViewportChange);
+  if(window.visualViewport){window.visualViewport.addEventListener('resize',onViewportChange);window.visualViewport.addEventListener('scroll',onViewportChange);}
   function emit(name,detail){window.dispatchEvent(new CustomEvent('mautic-webchat:'+name,{detail:detail||{}}));}
   function command(action,payload){var message=Object.assign({type:'webchat.command',action:action},payload||{});if(ready&&frame.contentWindow)frame.contentWindow.postMessage(message,targetOrigin);else pending.push(message);}
   var api={
@@ -37,7 +47,7 @@ final class PublicController extends CommonController
     openWithMessage:function(message){draft=String(message||'');command('open',{message:draft});},
     identify:function(user){identity=Object.assign({},identity,user||{});command('identify',{user:identity});},
     reset:function(){identity={};draft='';command('reset');},
-    destroy:function(){window.removeEventListener('message',onMessage);frame.remove();delete window.MauticWebChat;}
+    destroy:function(){window.removeEventListener('message',onMessage);window.removeEventListener('resize',onViewportChange);if(window.visualViewport){window.visualViewport.removeEventListener('resize',onViewportChange);window.visualViewport.removeEventListener('scroll',onViewportChange);}frame.remove();delete window.MauticWebChat;}
   };
   window.MauticWebChat=api;
   function onMessage(event){if(event.source!==frame.contentWindow||event.origin!==targetOrigin)return;
@@ -45,7 +55,7 @@ final class PublicController extends CommonController
       ready=true;frame.contentWindow.postMessage({type:'webchat.bootstrap',siteOrigin:location.origin,pageUrl:location.href,referrer:document.referrer,utm:Object.fromEntries(new URLSearchParams(location.search)),user:identity,message:draft},targetOrigin);
       pending.splice(0).forEach(function(message){frame.contentWindow.postMessage(message,targetOrigin);});emit('ready');
     }
-    if(event.data&&event.data.type==='webchat.resize'){var open=!!event.data.open;frame.style.width=open?(innerWidth<520?'calc(100vw - 16px)':'400px'):'76px';frame.style.height=open?(innerWidth<520?'calc(100vh - 16px)':'min(680px, calc(100vh - 32px))'):'76px';frame.style.right=open&&innerWidth<520?'8px':'16px';frame.style.bottom=open&&innerWidth<520?'8px':'16px';}
+    if(event.data&&event.data.type==='webchat.resize'){isOpen=!!event.data.open;placeFrame();}
     if(event.data&&event.data.type==='webchat.state')emit(event.data.open?'open':'close',{open:!!event.data.open});
     if(event.data&&event.data.type==='webchat.error')emit('error',{message:String(event.data.message||'Erro no WebChat')});
   }

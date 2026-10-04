@@ -467,6 +467,7 @@
       "Segoe UI",
       sans-serif;
     color: #202534;
+    -webkit-text-size-adjust: 100%;
   }
   .launcher {
     position: absolute;
@@ -518,6 +519,7 @@
   .panel {
     width: 100%;
     height: 100%;
+    min-height: 0;
     display: grid;
     grid-template-rows: auto 1fr auto auto;
     border: 1px solid #dfe3ec;
@@ -625,7 +627,7 @@
     padding: 0 12px;
     border: 1px solid #dce1eb;
     border-radius: 11px;
-    font: 14px inherit;
+    font: 16px/1.35 inherit;
   }
   .welcome input:focus {
     border-color: var(--wc-accent);
@@ -658,6 +660,8 @@
   .messages {
     min-height: 0;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     padding: 18px 16px;
     background: #f7f8fb;
     scrollbar-width: thin;
@@ -766,19 +770,26 @@
   .composer {
     display: grid;
     grid-template-columns: 1fr 40px;
+    align-items: end;
+    min-width: 0;
     gap: 8px;
     padding: 12px;
     border-top: 1px solid #e7e9ef;
     background: white;
   }
   .composer textarea {
+    display: block;
+    width: 100%;
+    min-width: 0;
     resize: none;
     min-height: 40px;
     max-height: 92px;
     padding: 10px 12px;
     border: 1px solid #dfe3eb;
     border-radius: 12px;
-    font: 14px/1.35 inherit;
+    font: 16px/1.35 inherit;
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
   }
   .composer button {
     width: 40px;
@@ -827,10 +838,35 @@
   }
   @media (max-width: 520px) {
     .panel {
-      border-radius: 18px;
+      border-radius: 16px;
     }
     .welcome {
       padding: 22px 20px;
+    }
+    .composer {
+      padding: 10px;
+    }
+  }
+  @media (max-height: 560px) {
+    header {
+      padding: 10px 12px;
+    }
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+    }
+    .messages {
+      padding: 10px 12px;
+    }
+    .day {
+      margin-bottom: 12px;
+    }
+    .composer {
+      padding: 8px;
+    }
+    footer {
+      display: none;
     }
   }
   @media (prefers-reduced-motion: reduce) {
