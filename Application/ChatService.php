@@ -33,7 +33,7 @@ final class ChatService
         private ConversationStateRepository $states,
         private MetaInboxIntegration $inbox,
         private AiService $ai,
-        private AiWorker $aiWorker,
+        private \Closure $aiWorker,
         private LeadModel $leads,
         private GatewayClient $gateway,
         private RealtimeTokenSigner $tokens,
@@ -175,7 +175,11 @@ final class ChatService
         if ($state instanceof ConversationState && null !== $session->getWidget()->getAiAgentKey() && $this->ai->assignSystem($state, $session->getWidget()->getAiAgentKey())) {
             $this->safePublish($session, ['type' => 'typing.started', 'role' => 'agent', 'name' => 'Assistente Macro']);
             try {
-                $this->aiWorker->process((int) $state->getId());
+                $worker = ($this->aiWorker)();
+                if (!$worker instanceof AiWorker) {
+                    throw new \LogicException('The AI worker service is unavailable.');
+                }
+                $worker->process((int) $state->getId());
             } finally {
                 $this->safePublish($session, ['type' => 'typing.stopped', 'role' => 'agent']);
             }
