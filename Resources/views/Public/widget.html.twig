@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Atendimento</title>
+  <link rel="stylesheet" href="{{ asset('plugins/MauticWebChatBundle/Assets/dist/widget-app.css') }}?v={{ assetVersion }}">
+</head>
+<body>
+  <div id="mautic-webchat-widget" data-public-key="{{ publicKey|e('html_attr') }}" data-config="{{ widgetConfig|json_encode|e('html_attr') }}"></div>
+  <script type="module" src="{{ asset('plugins/MauticWebChatBundle/Assets/dist/widget-app.js') }}?v={{ assetVersion }}"></script>
+</body>
+</html>

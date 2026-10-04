@@ -1,0 +1,25 @@
+{
+    "name": "raphaelcangucu/mautic-webchat-bundle",
+    "description": "Embeddable realtime website chat channel for the Mautic Omnichannel Inbox.",
+    "type": "mautic-plugin",
+    "license": "GPL-3.0-or-later",
+    "require": {
+        "php": ">=8.2",
+        "mautic/core-lib": "^7.0",
+        "raphaelcangucu/mautic-inbox-bundle": "^1.3",
+        "raphaelcangucu/mautic-meta-bundle": "^0.14"
+    },
+    "autoload": {
+        "psr-4": {
+            "MauticPlugin\\MauticWebChatBundle\\": ""
+        }
+    },
+    "extra": {
+        "install-directory-name": "MauticWebChatBundle"
+    },
+    "authors": [
+        {
+            "name": "Raphael Cangucu"
+        }
+    ]
+}

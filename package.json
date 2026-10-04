@@ -1,0 +1,23 @@
+{
+  "name": "@macro-markets/mautic-webchat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build --config vite.admin.config.ts && vite build --config vite.widget.config.ts",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "format:check": "prettier --plugin=prettier-plugin-svelte --check \"Frontend/**/*.{ts,svelte}\" \"Tests/JavaScript/*.{ts,mjs}\"",
+    "test": "npm run check && npm run build && tsx --test Tests/JavaScript/*.test.ts && npm --prefix Realtime test"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.0",
+    "jsdom": "27.0.0",
+    "prettier": "3.6.2",
+    "prettier-plugin-svelte": "3.4.0",
+    "svelte": "5.57.0",
+    "svelte-check": "4.3.5",
+    "tsx": "4.20.5",
+    "typescript": "5.9.3",
+    "vite": "8.3.0"
+  }
+}

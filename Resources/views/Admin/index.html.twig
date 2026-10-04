@@ -1,0 +1,8 @@
+{% extends '@MauticCore/Default/content.html.twig' %}
+{% block mauticContent %}webchat{% endblock %}
+{% block headerTitle %}{{ 'mautic.webchat.header'|trans }}{% endblock %}
+{% block content %}
+{{ includeStylesheet('plugins/MauticWebChatBundle/Assets/dist/admin-app.css?v=' ~ assetVersion) }}
+<div id="mautic-webchat-admin" data-data-url="{{ path('mautic_webchat_data') }}" data-save-url="{{ path('mautic_webchat_save') }}" data-health-url="{{ path('mautic_webchat_health') }}"></div>
+{{ includeScript('plugins/MauticWebChatBundle/Assets/dist/admin-app.js?v=' ~ assetVersion, 'webchatAdminOnLoad', 'webchatAdminOnLoad') }}
+{% endblock %}
