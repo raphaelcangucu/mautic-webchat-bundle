@@ -56,6 +56,11 @@ final class WebChatChannelTransport implements ChannelTransportInterface
         $this->chat->sendAi($state, $body, $metadata);
     }
 
+    public function setTyping(ConversationState $state, bool $active, string $name): void
+    {
+        $this->chat->setTyping($state, $active, $name);
+    }
+
     public function conversationMetadata(ConversationState $state): array
     {
         $session = $this->chat->sessionFor($state->getConversation());

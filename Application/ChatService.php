@@ -173,16 +173,11 @@ final class ChatService
         $this->safePublish($session, ['type' => 'message.created', 'message' => $this->messageData($message)]);
 
         if ($state instanceof ConversationState && null !== $session->getWidget()->getAiAgentKey() && $this->ai->assignSystem($state, $session->getWidget()->getAiAgentKey())) {
-            $this->safePublish($session, ['type' => 'typing.started', 'role' => 'agent', 'name' => 'Assistente Macro']);
-            try {
-                $worker = ($this->aiWorker)();
-                if (!$worker instanceof AiWorker) {
-                    throw new \LogicException('The AI worker service is unavailable.');
-                }
-                $worker->process((int) $state->getId());
-            } finally {
-                $this->safePublish($session, ['type' => 'typing.stopped', 'role' => 'agent']);
+            $worker = ($this->aiWorker)();
+            if (!$worker instanceof AiWorker) {
+                throw new \LogicException('The AI worker service is unavailable.');
             }
+            $worker->process((int) $state->getId());
         }
 
         return $message;
@@ -234,6 +229,15 @@ final class ChatService
         $this->em->flush();
         $this->safePublish($session, ['type' => 'message.created', 'message' => $this->messageData($message)]);
         return $message;
+    }
+
+    public function setTyping(ConversationState $state, bool $active, string $name): void
+    {
+        $this->safePublish($this->sessionFor($state->getConversation()), [
+            'type' => $active ? 'typing.started' : 'typing.stopped',
+            'role' => 'agent',
+            'name' => $name,
+        ]);
     }
 
     public function receipt(ChatSession $session, string $role, string $kind, int $messageId): void
