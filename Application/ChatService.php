@@ -290,6 +290,12 @@ final class ChatService
     {
         return [
             'id' => (int) $message->getId(),
+            // These are the canonical timeline identifiers used by Support Inbox.
+            // Carrying them over WebSocket lets the operator render the message in
+            // the same frame without inventing a temporary key or duplicating it
+            // when durable history is fetched immediately afterwards.
+            'inbox_message_id' => $message->getMetaMessage()?->getId(),
+            'outbound_request_id' => $message->getOutboundRequest()?->getId(),
             'client_id' => $message->getClientId(),
             'direction' => $message->getDirection(),
             'body' => $message->getBody(),
