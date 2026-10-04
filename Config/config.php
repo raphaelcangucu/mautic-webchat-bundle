@@ -9,7 +9,7 @@ use MauticPlugin\MauticWebChatBundle\Controller\RealtimeController;
 return [
     'name' => 'Mautic Realtime Web Chat',
     'description' => 'Widget de chat em tempo real conectado ao Inbox multicanal.',
-    'version' => '1.0.0',
+    'version' => '1.1.0',
     'author' => 'Raphael Cangucu',
     'routes' => [
         'main' => [
