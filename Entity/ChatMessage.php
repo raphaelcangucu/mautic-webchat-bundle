@@ -11,7 +11,7 @@ use Mautic\CoreBundle\Entity\CommonEntity;
 use MauticPlugin\MauticInboxBundle\Entity\OutboundRequest;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessage;
 
-final class ChatMessage extends CommonEntity
+class ChatMessage extends CommonEntity
 {
     private $id;
     private ChatSession $session;

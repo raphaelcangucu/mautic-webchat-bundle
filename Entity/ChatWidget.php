@@ -10,7 +10,7 @@ use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 use Mautic\CoreBundle\Entity\CommonEntity;
 use MauticPlugin\MauticMetaBundle\Entity\MetaAsset;
 
-final class ChatWidget extends CommonEntity
+class ChatWidget extends CommonEntity
 {
     private $id;
     private MetaAsset $asset;

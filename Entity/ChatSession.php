@@ -11,7 +11,7 @@ use Mautic\CoreBundle\Entity\CommonEntity;
 use Mautic\LeadBundle\Entity\Lead;
 use MauticPlugin\MauticMetaBundle\Entity\MetaConversation;
 
-final class ChatSession extends CommonEntity
+class ChatSession extends CommonEntity
 {
     private $id;
     private ChatWidget $widget;
