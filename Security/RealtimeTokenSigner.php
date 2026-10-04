@@ -6,6 +6,10 @@ namespace MauticPlugin\MauticWebChatBundle\Security;
 
 final class RealtimeTokenSigner
 {
+    public function __construct(private string $secretValue, private string $publicUrlValue)
+    {
+    }
+
     /** @return array{token:string,url:string,expires_at:string} */
     public function issue(string $sessionId, string $role, int $ttl = 3600): array
     {
@@ -41,7 +45,7 @@ final class RealtimeTokenSigner
 
     private function secret(): string
     {
-        $secret = trim((string) getenv('MAUTIC_WEBCHAT_REALTIME_SECRET'));
+        $secret = trim($this->secretValue);
         if (strlen($secret) < 32) {
             throw new \RuntimeException('MAUTIC_WEBCHAT_REALTIME_SECRET must contain at least 32 characters.');
         }
@@ -51,7 +55,7 @@ final class RealtimeTokenSigner
 
     private function publicUrl(): string
     {
-        $url = trim((string) getenv('MAUTIC_WEBCHAT_REALTIME_URL'));
+        $url = trim($this->publicUrlValue);
         if (!preg_match('#^wss?://#', $url)) {
             throw new \RuntimeException('MAUTIC_WEBCHAT_REALTIME_URL must be a WebSocket URL.');
         }

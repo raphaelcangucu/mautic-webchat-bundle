@@ -9,7 +9,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class GatewayClient
 {
-    public function __construct(private HttpClientInterface $http, private RealtimeTokenSigner $tokens)
+    public function __construct(private HttpClientInterface $http, private RealtimeTokenSigner $tokens, private string $internalUrlValue)
     {
     }
 
@@ -39,7 +39,7 @@ final class GatewayClient
 
     private function internalUrl(): string
     {
-        $url = trim((string) getenv('MAUTIC_WEBCHAT_REALTIME_INTERNAL_URL'));
+        $url = trim($this->internalUrlValue);
         return '' !== $url ? rtrim($url, '/') : 'http://127.0.0.1:8790';
     }
 }
