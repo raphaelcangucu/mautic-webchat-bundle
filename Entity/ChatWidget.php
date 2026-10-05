@@ -24,6 +24,7 @@ class ChatWidget extends CommonEntity
     private string $accentColor = '#4e5ba6';
     private bool $requireName = true;
     private bool $requireEmail = false;
+    private bool $requirePhone = false;
     private ?string $aiAgentKey = null;
     private \DateTimeInterface $dateAdded;
     private \DateTimeInterface $dateModified;
@@ -51,6 +52,7 @@ class ChatWidget extends CommonEntity
         $b->addField('accentColor', Types::STRING, ['columnName' => 'accent_color', 'length' => 16]);
         $b->addField('requireName', Types::BOOLEAN, ['columnName' => 'require_name']);
         $b->addField('requireEmail', Types::BOOLEAN, ['columnName' => 'require_email']);
+        $b->addField('requirePhone', Types::BOOLEAN, ['columnName' => 'require_phone', 'options' => ['default' => false]]);
         $b->addNullableField('aiAgentKey', Types::STRING, 'ai_agent_key');
         $b->addField('dateAdded', Types::DATETIME_IMMUTABLE, ['columnName' => 'date_added']);
         $b->addField('dateModified', Types::DATETIME_IMMUTABLE, ['columnName' => 'date_modified']);
@@ -78,6 +80,8 @@ class ChatWidget extends CommonEntity
     public function setRequireName(bool $v): self { $this->requireName = $v; return $this->touch(); }
     public function requiresEmail(): bool { return $this->requireEmail; }
     public function setRequireEmail(bool $v): self { $this->requireEmail = $v; return $this->touch(); }
+    public function requiresPhone(): bool { return $this->requirePhone; }
+    public function setRequirePhone(bool $v): self { $this->requirePhone = $v; return $this->touch(); }
     public function getAiAgentKey(): ?string { return $this->aiAgentKey; }
     public function setAiAgentKey(?string $v): self { $this->aiAgentKey = '' === trim((string) $v) ? null : trim((string) $v); return $this->touch(); }
     public function getDateAdded(): \DateTimeInterface { return $this->dateAdded; }

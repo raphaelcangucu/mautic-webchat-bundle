@@ -5,6 +5,9 @@
 - API pública `window.MauticWebChat` para abrir, fechar, alternar e reiniciar o widget em aplicações reativas.
 - Identificação antecipada do visitante autenticado e preenchimento de mensagem ao abrir o atendimento.
 - Eventos de prontidão, abertura, fechamento e erro para integração com o estado do aplicativo hospedeiro.
+- Recuperação do histórico ao reconectar ou voltar à página, com heartbeat para detectar conexões móveis suspensas.
+- Contador persistente de mensagens não lidas e aviso sonoro para novas respostas.
+- Compositor ajustado à área visível do teclado móvel e launcher sem recorte de sombra.
 
 ## 1.0.0 - 2026-10-04
 

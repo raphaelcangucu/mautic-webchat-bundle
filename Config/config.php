@@ -9,7 +9,7 @@ use MauticPlugin\MauticWebChatBundle\Controller\RealtimeController;
 return [
     'name' => 'Mautic Realtime Web Chat',
     'description' => 'Widget de chat em tempo real conectado ao Inbox multicanal.',
-    'version' => '1.1.0',
+    'version' => '1.2.0',
     'author' => 'Raphael Cangucu',
     'routes' => [
         'main' => [
@@ -28,7 +28,7 @@ return [
             'mautic_webchat_session' => ['path' => '/chat/api/{publicKey}/sessions', 'controller' => PublicController::class.'::session', 'method' => 'POST', 'defaults' => ['_stateless' => true], 'requirements' => ['publicKey' => 'pub_[a-zA-Z0-9_-]+']],
             'mautic_webchat_history' => ['path' => '/chat/api/sessions/{publicId}/history', 'controller' => PublicController::class.'::history', 'method' => 'GET', 'defaults' => ['_stateless' => true], 'requirements' => ['publicId' => '[a-f0-9]{32}']],
             'mautic_webchat_message' => ['path' => '/chat/api/sessions/{publicId}/messages', 'controller' => PublicController::class.'::message', 'method' => 'POST', 'defaults' => ['_stateless' => true], 'requirements' => ['publicId' => '[a-f0-9]{32}']],
-            'mautic_webchat_realtime_ingest' => ['path' => '/chat/api/realtime/ingest', 'controller' => RealtimeController::class.'::ingest', 'method' => 'POST', 'defaults' => ['_stateless' => true]],
+            'mautic_webchat_realtime_events' => ['path' => '/chat/api/realtime/events', 'controller' => RealtimeController::class.'::events', 'method' => 'POST', 'defaults' => ['_stateless' => true]],
         ],
     ],
     'menu' => [

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run one bounded Mautic Inbox AI worker at a time
+
+[Timer]
+OnBootSec=5s
+OnUnitInactiveSec=3s
+AccuracySec=1s
+Unit=mautic-inbox-ai.service
+
+[Install]
+WantedBy=timers.target

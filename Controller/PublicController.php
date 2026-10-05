@@ -25,13 +25,13 @@ final class PublicController extends CommonController
         $script = <<<'JS'
 (function(){
   if(window.MauticWebChat)return;
-  var ready=false,pending=[],identity={},draft='',isOpen=false;
-  var frame=document.createElement('iframe');frame.src=FRAME_URL;frame.title='Atendimento';frame.setAttribute('allow','clipboard-write');
-  frame.style.cssText='position:fixed;z-index:2147483000;right:16px;bottom:16px;width:76px;height:76px;border:0;background:transparent;color-scheme:light;';
+  var ready=false,pending=[],identity={},draft='',isOpen=false,audioContext=null;
+  var frame=document.createElement('iframe');frame.src=FRAME_URL;frame.title='Atendimento';frame.setAttribute('allow','autoplay; clipboard-write');
+  frame.style.cssText='position:fixed;z-index:2147483000;right:0;bottom:0;width:104px;height:104px;border:0;background:transparent;color-scheme:light;';
   frame.dataset.mauticWebchat='1';document.body.appendChild(frame);var targetOrigin=new URL(FRAME_URL).origin;
   function viewportBox(){var viewport=window.visualViewport;return{width:Math.round(viewport?viewport.width:innerWidth),height:Math.round(viewport?viewport.height:innerHeight),left:Math.round(viewport?viewport.offsetLeft:0),top:Math.round(viewport?viewport.offsetTop:0)};}
   function placeFrame(){
-    if(!isOpen){frame.style.left='auto';frame.style.top='auto';frame.style.right='16px';frame.style.bottom='16px';frame.style.width='76px';frame.style.height='76px';return;}
+    if(!isOpen){frame.style.left='auto';frame.style.top='auto';frame.style.right='0';frame.style.bottom='0';frame.style.width='104px';frame.style.height='104px';return;}
     var viewport=viewportBox();
     if(viewport.width<520){frame.style.left=(viewport.left+8)+'px';frame.style.top=(viewport.top+8)+'px';frame.style.right='auto';frame.style.bottom='auto';frame.style.width=Math.max(0,viewport.width-16)+'px';frame.style.height=Math.max(0,viewport.height-16)+'px';return;}
     frame.style.left='auto';frame.style.top='auto';frame.style.right='16px';frame.style.bottom='16px';frame.style.width='400px';frame.style.height=Math.min(680,Math.max(0,viewport.height-32))+'px';
@@ -40,6 +40,11 @@ final class PublicController extends CommonController
   window.addEventListener('resize',onViewportChange);
   if(window.visualViewport){window.visualViewport.addEventListener('resize',onViewportChange);window.visualViewport.addEventListener('scroll',onViewportChange);}
   function emit(name,detail){window.dispatchEvent(new CustomEvent('mautic-webchat:'+name,{detail:detail||{}}));}
+  function unlockSound(){try{var AudioCtor=window.AudioContext||window.webkitAudioContext;if(!AudioCtor)return false;if(!audioContext)audioContext=new AudioCtor();if(audioContext.state==='suspended')audioContext.resume();return audioContext.state==='running';}catch(error){return false;}}
+  function playSound(){if(!unlockSound()||!audioContext)return;var now=audioContext.currentTime;[0,0.12].forEach(function(delay,index){var oscillator=audioContext.createOscillator(),gain=audioContext.createGain();oscillator.type='sine';oscillator.frequency.value=index?740:620;gain.gain.setValueAtTime(0.0001,now+delay);gain.gain.exponentialRampToValueAtTime(0.055,now+delay+0.015);gain.gain.exponentialRampToValueAtTime(0.0001,now+delay+0.13);oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.start(now+delay);oscillator.stop(now+delay+0.14);});}
+  function primeSound(){unlockSound();}
+  document.addEventListener('pointerdown',primeSound,{passive:true});
+  document.addEventListener('keydown',primeSound,{passive:true});
   function command(action,payload){var message=Object.assign({type:'webchat.command',action:action},payload||{});if(ready&&frame.contentWindow)frame.contentWindow.postMessage(message,targetOrigin);else pending.push(message);}
   var api={
     isReady:function(){return ready;},
@@ -47,7 +52,7 @@ final class PublicController extends CommonController
     openWithMessage:function(message){draft=String(message||'');command('open',{message:draft});},
     identify:function(user){identity=Object.assign({},identity,user||{});command('identify',{user:identity});},
     reset:function(){identity={};draft='';command('reset');},
-    destroy:function(){window.removeEventListener('message',onMessage);window.removeEventListener('resize',onViewportChange);if(window.visualViewport){window.visualViewport.removeEventListener('resize',onViewportChange);window.visualViewport.removeEventListener('scroll',onViewportChange);}frame.remove();delete window.MauticWebChat;}
+    destroy:function(){window.removeEventListener('message',onMessage);window.removeEventListener('resize',onViewportChange);document.removeEventListener('pointerdown',primeSound);document.removeEventListener('keydown',primeSound);if(window.visualViewport){window.visualViewport.removeEventListener('resize',onViewportChange);window.visualViewport.removeEventListener('scroll',onViewportChange);}if(audioContext)audioContext.close();frame.remove();delete window.MauticWebChat;}
   };
   window.MauticWebChat=api;
   function onMessage(event){if(event.source!==frame.contentWindow||event.origin!==targetOrigin)return;
@@ -57,6 +62,8 @@ final class PublicController extends CommonController
     }
     if(event.data&&event.data.type==='webchat.resize'){isOpen=!!event.data.open;placeFrame();}
     if(event.data&&event.data.type==='webchat.state')emit(event.data.open?'open':'close',{open:!!event.data.open});
+    if(event.data&&event.data.type==='webchat.notification'){if(!event.data.played)playSound();emit('notification',{unread:Number(event.data.unread||0)});}
+    if(event.data&&event.data.type==='webchat.unread')emit('unread',{count:Number(event.data.count||0)});
     if(event.data&&event.data.type==='webchat.error')emit('error',{message:String(event.data.message||'Erro no WebChat')});
   }
   window.addEventListener('message',onMessage);
@@ -74,12 +81,12 @@ JS;
         }
         $response = $this->render('@MauticWebChat/Public/widget.html.twig', [
             'publicKey' => $publicKey,
-            'widgetConfig' => ['name' => $widget->getName(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(), 'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail()],
+            'widgetConfig' => ['name' => $widget->getName(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(), 'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail(), 'require_phone' => $widget->requiresPhone()],
             'assetVersion' => (string) (@filemtime(__DIR__.'/../Assets/dist/widget-app.js') ?: time()),
         ]);
         $response->headers->remove('X-Frame-Options');
         $ancestors = array_map(static fn (string $domain): string => 'https://'.$domain, $widget->getAllowedDomains());
-        $response->headers->set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: ws:; img-src 'self' data: https:; frame-ancestors 'self' ".implode(' ', $ancestors));
+        $response->headers->set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; frame-ancestors 'self' ".implode(' ', $ancestors));
         $response->headers->set('Cache-Control', 'no-store');
         return $response;
     }

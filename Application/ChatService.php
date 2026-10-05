@@ -8,13 +8,13 @@ use Doctrine\ORM\EntityManagerInterface;
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Model\LeadModel;
 use MauticPlugin\MauticInboxBundle\Application\Ai\AiService;
-use MauticPlugin\MauticInboxBundle\Application\Ai\AiWorker;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationStateRepository;
 use MauticPlugin\MauticInboxBundle\Entity\OutboundRequest;
 use MauticPlugin\MauticInboxBundle\Integration\MetaInboxIntegration;
 use MauticPlugin\MauticMetaBundle\Entity\MetaConversation;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessage;
+use MauticPlugin\MauticMetaBundle\Application\WhatsApp\PhoneNormalizer;
 use MauticPlugin\MauticWebChatBundle\Entity\ChatMessage;
 use MauticPlugin\MauticWebChatBundle\Entity\ChatMessageRepository;
 use MauticPlugin\MauticWebChatBundle\Entity\ChatSession;
@@ -33,11 +33,11 @@ final class ChatService
         private ConversationStateRepository $states,
         private MetaInboxIntegration $inbox,
         private AiService $ai,
-        private \Closure $aiWorker,
         private LeadModel $leads,
         private GatewayClient $gateway,
         private RealtimeTokenSigner $tokens,
         private WidgetOrigin $origins,
+        private PhoneNormalizer $phones = new PhoneNormalizer(),
     ) {
     }
 
@@ -54,15 +54,7 @@ final class ChatService
         }
         $name = mb_substr(trim((string) ($input['name'] ?? '')), 0, 120);
         $email = strtolower(mb_substr(trim((string) ($input['email'] ?? '')), 0, 190));
-        if ($widget->requiresName() && '' === $name) {
-            throw new \DomainException('Informe seu nome para iniciar o atendimento.');
-        }
-        if ($widget->requiresEmail() && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            throw new \DomainException('Informe um e-mail válido para iniciar o atendimento.');
-        }
-        if ('' !== $email && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            throw new \DomainException('O e-mail informado não é válido.');
-        }
+        $phone = trim((string) ($input['phone'] ?? ''));
 
         $plainToken = trim((string) ($input['resume_token'] ?? ''));
         $publicId = trim((string) ($input['resume_session'] ?? ''));
@@ -71,7 +63,37 @@ final class ChatService
             $session = null;
             $plainToken = bin2hex(random_bytes(32));
         }
-        $contact = $this->contact($name, $email);
+        // An authenticated existing session survives later changes to required fields.
+        if ($session instanceof ChatSession) {
+            $name = '' !== $name ? $name : ($session->getVisitorName() ?? '');
+            $email = '' !== $email ? $email : ($session->getVisitorEmail() ?? '');
+            $phone = '' !== $phone ? $phone : ($session->getVisitorPhone() ?? '');
+        } else {
+            if ($widget->requiresName() && '' === $name) {
+                throw new \DomainException('Informe seu nome para iniciar o atendimento.');
+            }
+            if ($widget->requiresEmail() && '' === $email) {
+                throw new \DomainException('Informe um e-mail válido para iniciar o atendimento.');
+            }
+            if ($widget->requiresPhone() && '' === $phone) {
+                throw new \DomainException('Informe seu telefone para iniciar o atendimento.');
+            }
+        }
+        if ('' !== $email && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new \DomainException('O e-mail informado não é válido.');
+        }
+        if ('' !== $phone) {
+            if (strlen($phone) > 50) {
+                throw new \DomainException('Informe um telefone válido com DDD ou código do país.');
+            }
+            try {
+                $phone = '+'.$this->phones->normalize($phone, (string) ($widget->getAsset()->getSettings()['default_region'] ?? 'BR'));
+            } catch (\InvalidArgumentException) {
+                throw new \DomainException('Informe um telefone válido com DDD ou código do país.');
+            }
+        }
+        $contact = $session instanceof ChatSession && $session->getVisitorName() === ('' === $name ? null : $name) && $session->getVisitorEmail() === ('' === $email ? null : $email) && $session->getVisitorPhone() === ('' === $phone ? null : $phone)
+            ? $session->getContact() : $this->contact($name, $email, $phone);
         if (!$session instanceof ChatSession) {
             $conversation = (new MetaConversation())
                 ->setAsset($widget->getAsset())
@@ -95,6 +117,7 @@ final class ChatService
         }
         $session->setVisitorName('' === $name ? null : $name)
             ->setVisitorEmail('' === $email ? null : $email)
+            ->setVisitorPhone('' === $phone ? null : $phone)
             ->setPageUrl($this->url($input['page_url'] ?? null))
             ->setReferrer($this->url($input['referrer'] ?? null))
             ->setUtm($this->utm($input['utm'] ?? []))
@@ -107,6 +130,7 @@ final class ChatService
             'session' => $session->getPublicId(),
             'session_token' => $plainToken,
             'realtime' => $this->tokens->issue($session->getPublicId(), 'visitor'),
+            'visitor_last_read_message_id' => $session->getVisitorLastReadMessageId(),
             'widget' => $this->widgetData($widget),
             'messages' => $this->history($session),
         ];
@@ -124,7 +148,7 @@ final class ChatService
     /** @return list<array<string,mixed>> */
     public function history(ChatSession $session): array
     {
-        return array_map(fn (ChatMessage $message): array => $this->messageData($message), array_reverse($this->messages->findBy(['session' => $session], ['id' => 'DESC'], 100)));
+        return $this->messages->timeline($session);
     }
 
     public function receiveVisitor(ChatSession $session, string $body, string $clientId): ChatMessage
@@ -141,7 +165,7 @@ final class ChatService
 
         $conversation = $session->getConversation();
         $now = new \DateTimeImmutable();
-        $profile = array_filter(['name' => $session->getVisitorName(), 'email' => $session->getVisitorEmail()]);
+        $profile = array_filter(['name' => $session->getVisitorName(), 'email' => $session->getVisitorEmail(), 'phone' => $session->getVisitorPhone()]);
         $meta = (new MetaMessage())
             ->setAsset($conversation->getAsset())
             ->setConversation($conversation)
@@ -172,12 +196,9 @@ final class ChatService
         $state = $this->states->findOneBy(['conversation' => $conversation]);
         $this->safePublish($session, ['type' => 'message.created', 'message' => $this->messageData($message)]);
 
-        if ($state instanceof ConversationState && null !== $session->getWidget()->getAiAgentKey() && $this->ai->assignSystem($state, $session->getWidget()->getAiAgentKey())) {
-            $worker = ($this->aiWorker)();
-            if (!$worker instanceof AiWorker) {
-                throw new \LogicException('The AI worker service is unavailable.');
-            }
-            $worker->process((int) $state->getId());
+        if ($state instanceof ConversationState && null !== $session->getWidget()->getAiAgentKey()) {
+            // The supervised Inbox AI worker processes assignments outside HTTP/FPM.
+            $this->ai->assignSystem($state, $session->getWidget()->getAiAgentKey());
         }
 
         return $message;
@@ -237,6 +258,7 @@ final class ChatService
             'type' => $active ? 'typing.started' : 'typing.stopped',
             'role' => 'agent',
             'name' => $name,
+            'expires_in' => $active ? 120 : 0,
         ]);
     }
 
@@ -249,34 +271,22 @@ final class ChatService
         if (!$target instanceof ChatMessage || $target->getSession()->getId() !== $session->getId()) {
             throw new \DomainException('Mensagem não encontrada.');
         }
-        if ('visitor' === $role && in_array($target->getDirection(), ['agent', 'ai'], true)) {
-            foreach ($this->messages->createQueryBuilder('m')->where('m.session = :session')->andWhere('m.id <= :id')->andWhere("m.direction IN ('agent','ai')")->setParameters(['session' => $session, 'id' => $messageId])->getQuery()->getResult() as $message) {
-                if ('read' === $kind || 'sent' === $message->getStatus()) {
-                    $message->setStatus($kind);
-                    if ($message->getOutboundRequest() instanceof OutboundRequest) {
-                        $message->getOutboundRequest()->setStatus($kind);
-                        $this->em->persist($message->getOutboundRequest());
-                    }
-                    if ($message->getMetaMessage() instanceof MetaMessage) {
-                        $message->getMetaMessage()->setStatus($kind);
-                        $this->em->persist($message->getMetaMessage());
-                    }
-                    $this->em->persist($message);
-                }
-            }
-            if ('read' === $kind) {
-                $session->setVisitorLastReadMessageId($messageId);
-            }
-        } elseif ('agent' === $role && 'visitor' === $target->getDirection() && 'read' === $kind) {
-            $session->setAgentLastReadMessageId($messageId);
-            $session->getConversation()->setUnreadCount(0);
-            $this->em->persist($session->getConversation());
-        } else {
+        $lastRead = 'visitor' === $role ? $session->getVisitorLastReadMessageId() : $session->getAgentLastReadMessageId();
+        if (!ReceiptPolicy::shouldApply($role, $kind, $target->getDirection(), $target->getStatus(), $messageId, (int) $lastRead)) {
             return;
         }
-        $session->seen();
-        $this->em->persist($session);
-        $this->em->flush();
+        $this->em->getConnection()->transactional(function () use ($session, $role, $kind, $messageId, $lastRead): void {
+            if ('visitor' === $role) {
+                $this->messages->advanceReceipts($session, $kind, (int) $lastRead, $messageId);
+            } else {
+                $this->messages->markVisitorRead($session, (int) $lastRead, $messageId);
+                $session->getConversation()->setUnreadCount(0);
+                $this->em->persist($session->getConversation());
+            }
+            $this->messages->touchReceiptSession($session, $role, $kind, $messageId);
+            $this->em->refresh($session);
+            $this->em->flush();
+        });
         $this->safePublish($session, ['type' => 'message.'.$kind, 'message_id' => $messageId, 'role' => $role, 'at' => gmdate(DATE_ATOM)]);
     }
 
@@ -295,7 +305,7 @@ final class ChatService
         return [
             'id' => (int) $message->getId(),
             // These are the canonical timeline identifiers used by Support Inbox.
-            // Carrying them over WebSocket lets the operator render the message in
+            // Carrying them over SSE lets the operator render the message in
             // the same frame without inventing a temporary key or duplicating it
             // when durable history is fetched immediately afterwards.
             'inbox_message_id' => $message->getMetaMessage()?->getId(),
@@ -312,12 +322,12 @@ final class ChatService
     /** @return array<string,mixed> */
     public function widgetData(ChatWidget $widget): array
     {
-        return ['name' => $widget->getName(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(), 'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail()];
+        return ['name' => $widget->getName(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(), 'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail(), 'require_phone' => $widget->requiresPhone()];
     }
 
-    private function contact(string $name, string $email): ?Lead
+    private function contact(string $name, string $email, string $phone): ?Lead
     {
-        if ('' === $email && '' === $name) {
+        if ('' === $email && '' === $name && '' === $phone) {
             return null;
         }
         $matches = '' === $email ? [] : $this->leads->getRepository()->getLeadsByFieldValue('email', $email);
@@ -327,6 +337,7 @@ final class ChatService
             'firstname' => $parts[0] ?? null,
             'lastname' => $parts[1] ?? null,
             'email' => '' !== $email ? $email : null,
+            'mobile' => '' !== $phone ? $phone : null,
         ], static fn (mixed $value): bool => null !== $value && '' !== $value);
         if ([] !== $fields) {
             $this->leads->setFieldValues($contact, $fields, true);

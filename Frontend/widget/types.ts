@@ -5,6 +5,7 @@ export interface WidgetConfig {
   accent_color: string;
   require_name: boolean;
   require_email: boolean;
+  require_phone?: boolean;
 }
 export interface ChatMessage {
   id: number;
@@ -18,7 +19,14 @@ export interface ChatMessage {
 export interface SessionData {
   session: string;
   session_token: string;
-  realtime: { token: string; url: string; expires_at: string };
+  visitor_last_read_message_id?: number | null;
+  realtime: {
+    token: string;
+    url: string;
+    event_url?: string;
+    transport?: string;
+    expires_at: string;
+  };
   widget: WidgetConfig;
   messages: ChatMessage[];
 }
@@ -27,6 +35,6 @@ export interface Bootstrap {
   pageUrl: string;
   referrer: string;
   utm: Record<string, string>;
-  user?: { name?: string; email?: string };
+  user?: { name?: string; email?: string; phone?: string };
   message?: string;
 }

@@ -37,7 +37,8 @@ class ChatMessage extends CommonEntity
             ->addUniqueConstraint(['client_id'], 'webchat_message_client_id')
             ->addUniqueConstraint(['outbound_request_id'], 'webchat_message_outbound')
             ->addUniqueConstraint(['meta_message_id'], 'webchat_message_meta')
-            ->addIndex(['session_id', 'id'], 'webchat_message_timeline');
+            ->addIndex(['session_id', 'id'], 'webchat_message_timeline')
+            ->addIndex(['session_id', 'direction', 'id'], 'webchat_message_direction');
         $b->addId();
         $b->createManyToOne('session', ChatSession::class)->addJoinColumn('session_id', 'id', false, false, 'CASCADE')->build();
         $b->createManyToOne('outboundRequest', OutboundRequest::class)->addJoinColumn('outbound_request_id', 'id', true, false, 'SET NULL')->build();

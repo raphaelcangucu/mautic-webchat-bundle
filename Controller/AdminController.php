@@ -76,7 +76,8 @@ final class AdminController extends CommonController
         $widget->setName($name)->setAsset($asset)->setPublished(!empty($input['published']))->setAllowedDomains($domains)
             ->setGreeting(mb_substr(trim((string) ($input['greeting'] ?? 'Olá! Como podemos ajudar?')), 0, 500))
             ->setOfflineMessage(mb_substr(trim((string) ($input['offline_message'] ?? 'Deixe sua mensagem e responderemos assim que possível.')), 0, 500))
-            ->setAccentColor($color)->setRequireName(!empty($input['require_name']))->setRequireEmail(!empty($input['require_email']))->setAiAgentKey($agentKey);
+            ->setAccentColor($color)->setRequireName(!empty($input['require_name']))->setRequireEmail(!empty($input['require_email']))
+            ->setRequirePhone(array_key_exists('require_phone', $input) ? !empty($input['require_phone']) : $widget->requiresPhone())->setAiAgentKey($agentKey);
         $em->persist($widget);
         $em->flush();
         return new JsonResponse(['item' => $this->widget($widget)], null === $widgetId ? 201 : 200);
@@ -109,7 +110,7 @@ final class AdminController extends CommonController
         return [
             'id' => (int) $widget->getId(), 'name' => $widget->getName(), 'public_key' => $widget->getPublicKey(), 'published' => $widget->isPublished(),
             'allowed_domains' => $widget->getAllowedDomains(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(),
-            'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail(),
+            'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail(), 'require_phone' => $widget->requiresPhone(),
             'ai_agent_key' => $widget->getAiAgentKey(), 'asset_id' => (int) $widget->getAsset()->getId(), 'asset_name' => $widget->getAsset()->getName(),
             'embed' => '<script async src="'.$loader.'"></script>',
             'demo_url' => $this->generateUrl('mautic_webchat_demo', ['publicKey' => $widget->getPublicKey()], UrlGeneratorInterface::ABSOLUTE_URL),

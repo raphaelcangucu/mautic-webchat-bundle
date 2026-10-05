@@ -1,0 +1,13 @@
+[Unit]
+Description=Process Mautic Inbox AI assignments outside PHP-FPM
+After=network.target mautic-webchat-sse.service
+
+[Service]
+Type=oneshot
+User=forge
+WorkingDirectory=/home/forge/mkt-macro.on-forge.com/current
+ExecStart=/usr/bin/php8.4 bin/console mautic:inbox:ai:work --env=prod --no-interaction
+TimeoutStartSec=300
+CPUQuota=50%
+MemoryMax=768M
+NoNewPrivileges=true
