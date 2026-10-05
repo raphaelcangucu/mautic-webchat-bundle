@@ -35,7 +35,7 @@ Canal de chat incorporável para o [Mautic Omnichannel Inbox](https://github.com
 ```mermaid
 flowchart LR
     Site[Site com embed.js] --> Frame[Widget Svelte em iframe]
-    Frame <-->|SSE: mensagens, digitação e leitura| Gateway[Broker PHP CLI + Workerman]
+    Gateway[Broker PHP CLI + Workerman] -->|SSE: mensagens, digitação e leitura| Frame
     Frame -->|Sessão, histórico e fallback HTTP| WebChat[MauticWebChatBundle]
     Frame -->|POST autenticado| WebChat
     WebChat -->|Publicação HTTP local| Gateway
@@ -63,7 +63,7 @@ Veja a arquitetura detalhada em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) e o
 - Nginx ou outro proxy reverso com buffering desativado para SSE;
 - systemd para supervisionar o broker PHP e o worker de IA.
 
-O frontend usa Svelte 5 e TypeScript. Os bundles compilados ficam em `Assets/dist`, os assets são compilados localmente. O tempo real roda em PHP; Node.js é necessário apenas para compilar e para o runtime opcional de IA Pi.
+O frontend usa Svelte 5 e TypeScript. Os assets são compilados localmente e distribuídos em `Assets/dist`. O tempo real roda em PHP; Node.js é necessário apenas para compilar e para o runtime opcional de IA Pi.
 
 ## Instalação
 
