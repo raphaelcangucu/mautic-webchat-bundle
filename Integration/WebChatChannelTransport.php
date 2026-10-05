@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MauticPlugin\MauticWebChatBundle\Integration;
 
 use MauticPlugin\MauticInboxBundle\Contract\ChannelTransportInterface;
+use MauticPlugin\MauticInboxBundle\Contract\BatchChannelTransportInterface;
+use MauticPlugin\MauticWebChatBundle\Entity\ChatSessionRepository;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
 use MauticPlugin\MauticInboxBundle\Entity\OutboundRequest;
 use MauticPlugin\MauticMetaBundle\Entity\MetaConversation;
@@ -13,13 +15,28 @@ use MauticPlugin\MauticWebChatBundle\Entity\ChatMessage;
 use MauticPlugin\MauticWebChatBundle\Entity\ChatMessageRepository;
 use MauticPlugin\MauticWebChatBundle\Security\RealtimeTokenSigner;
 
-final class WebChatChannelTransport implements ChannelTransportInterface
+final class WebChatChannelTransport implements ChannelTransportInterface, BatchChannelTransportInterface
 {
+    private array $primedSessions = [];
+    private array $primedPreviews = [];
+
     public function __construct(
         private ChatService $chat,
         private ChatMessageRepository $messages,
         private RealtimeTokenSigner $tokens,
+        private ChatSessionRepository $sessions,
     ) {
+    }
+
+    public function warmConversationMetadata(array $states): void
+    {
+        $this->primedSessions = $this->primedPreviews = [];
+        $ids = array_map(static fn (ConversationState $state): int => (int) $state->getConversation()->getId(), $states);
+        $sessions = $this->sessions->forConversations($ids);
+        foreach ($sessions as $session) $this->primedSessions[(int) $session->getConversation()->getId()] = $session;
+        $sessionIds = array_map(static fn ($session): int => (int) $session->getId(), $sessions);
+        $this->primedPreviews = array_fill_keys($sessionIds, '');
+        foreach ($this->messages->previews($sessionIds) as $row) $this->primedPreviews[(int) $row['session_id']] = mb_substr($row['body'], 0, 180);
     }
 
     public function supports(MetaConversation $conversation): bool
@@ -63,8 +80,12 @@ final class WebChatChannelTransport implements ChannelTransportInterface
 
     public function conversationMetadata(ConversationState $state): array
     {
-        $session = $this->chat->sessionFor($state->getConversation());
-        $latest = $this->messages->findOneBy(['session' => $session], ['id' => 'DESC']);
+        $session = $this->primedSessions[(int) $state->getConversation()->getId()] ?? $this->chat->sessionFor($state->getConversation());
+        $preview = $this->primedPreviews[(int) $session->getId()] ?? null;
+        if (null === $preview) {
+            $latest = $this->messages->findOneBy(['session' => $session], ['id' => 'DESC']);
+            $preview = $latest instanceof ChatMessage ? mb_substr($latest->getBody(), 0, 180) : '';
+        }
         $name = $session->getVisitorName() ?: ($session->getContact()?->getName() ?: 'Visitante do site');
         $pageUrl = $session->getPageUrl();
         $pageHost = is_string($pageUrl) ? (string) parse_url($pageUrl, PHP_URL_HOST) : '';
@@ -82,7 +103,7 @@ final class WebChatChannelTransport implements ChannelTransportInterface
             'contact_name' => $name,
             'contact_handle' => $session->getVisitorEmail(),
             'recipient' => $session->getVisitorEmail() ?: $session->getPublicId(),
-            'preview' => $latest instanceof ChatMessage ? mb_substr($latest->getBody(), 0, 180) : '',
+            'preview' => $preview,
             'channel' => 'webchat',
             'conversation_kind' => 'Chat do site',
             'asset' => ['id' => $session->getWidget()->getId(), 'name' => $session->getWidget()->getName(), 'channel' => 'webchat'],

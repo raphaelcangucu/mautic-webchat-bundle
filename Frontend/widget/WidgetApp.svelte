@@ -26,6 +26,7 @@
   let realtime: RealtimeClient | null = null;
   let connection: "connecting" | "online" | "offline" = "connecting";
   let agentTyping = false;
+  let agentTypingTimer = 0;
   let agentTypingName = "Atendimento";
   let agentOnline = false;
   let unread = 0;
@@ -194,10 +195,15 @@
     realtime = new RealtimeClient(session, {
       status(value) {
         connection = value;
+        if (value !== "online") agentTyping = false;
         if (value === "online") void recoverHistory();
       },
       event(event) {
-        if (event.type === "message.created" && event.message) {
+        if (event.type === "auth.expired") {
+          void recoverHistory().then(() => realtime?.connect());
+        } else if (event.type === "sync.required") {
+          void recoverHistory();
+        } else if (event.type === "message.created" && event.message) {
           const message = event.message as ChatMessage;
           const existing = messages.findIndex(
             (item) => item.client_id === message.client_id,
@@ -206,7 +212,18 @@
           messages =
             existing >= 0
               ? messages.map((item, index) =>
-                  index === existing ? message : item,
+                  index === existing
+                    ? {
+                        ...message,
+                        status:
+                          item.status === "read"
+                            ? "read"
+                            : item.status === "delivered" &&
+                                message.status === "sent"
+                              ? "delivered"
+                              : message.status,
+                      }
+                    : item,
                 )
               : [...messages, message];
           if (message.direction !== "visitor") {
@@ -220,24 +237,32 @@
         } else if (
           (event.type === "message.delivered" ||
             event.type === "message.read") &&
-          event.message_id
+          event.message_id &&
+          event.role === "agent"
         ) {
           const status = event.type === "message.read" ? "read" : "delivered";
           messages = messages.map((item) =>
-            item.id <= Number(event.message_id) && item.direction === "visitor"
+            item.id <= Number(event.message_id) &&
+            item.direction === "visitor" &&
+            item.status !== "read"
               ? { ...item, status }
               : item,
           );
         } else if (event.type === "typing.started" && event.role === "agent") {
           agentTypingName = String(event.name || "Atendimento");
           agentTyping = true;
+          clearTimeout(agentTypingTimer);
+          agentTypingTimer = window.setTimeout(
+            () => (agentTyping = false),
+            6000,
+          );
         } else if (event.type === "typing.stopped" && event.role === "agent")
           agentTyping = false;
         else if (event.type === "presence.changed" && event.role === "agent")
           agentOnline = Boolean(event.online);
         else if (event.type === "event.failed" && event.request_id)
           messages = messages.map((item) =>
-            item.client_id === event.request_id
+            item.client_id === event.request_id && item.id < 0
               ? { ...item, status: "failed" }
               : item,
           );
@@ -298,7 +323,7 @@
       }
       markRead();
     } catch {
-      // The WebSocket retry will request durable history again on reconnect.
+      // The SSE reconnect will request durable history again on reconnect.
     } finally {
       recovering = false;
     }
@@ -436,6 +461,7 @@
   onDestroy(() => {
     realtime?.close();
     clearTimeout(typingTimer);
+    clearTimeout(agentTypingTimer);
     if (audioContext) void audioContext.close();
   });
 </script>

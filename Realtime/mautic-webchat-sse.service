@@ -1,0 +1,27 @@
+[Unit]
+Description=Mautic WebChat PHP SSE broker
+After=network.target
+
+[Service]
+Type=simple
+User=forge
+WorkingDirectory=/home/forge/mkt-macro.on-forge.com/current/plugins/MauticWebChatBundle
+EnvironmentFile=/home/forge/.config/mautic-webchat-sse.env
+Environment=WEBCHAT_RUNTIME_DIR=/run/mautic-webchat-sse
+RuntimeDirectory=mautic-webchat-sse
+ExecStart=/usr/bin/php8.4 Realtime/server.php start
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=10
+MemoryMax=128M
+CPUQuota=50%
+LimitNOFILE=4096
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/mautic-webchat-sse
+
+[Install]
+WantedBy=multi-user.target

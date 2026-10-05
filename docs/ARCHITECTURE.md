@@ -7,7 +7,7 @@
 | Loader `/chat/embed.js` | Descobre o widget, valida a origem e injeta o `iframe` sem conflitar com CSS ou JavaScript do site. |
 | Widget Svelte | Renderiza identificação, histórico, composer, presença, digitação e recibos. Mantém uma sessão retomável no navegador. |
 | API pública PHP | Cria sessões, persiste mensagens, entrega histórico e recebe o fallback HTTP. |
-| Gateway Node.js | Autentica WebSockets, organiza salas por sessão, retransmite eventos e envia ações do visitante ao endpoint de ingestão. |
+| Broker PHP SSE | Autentica EventSource, organiza salas por sessão e transmite eventos. Nunca chama FPM ou banco. |
 | `MauticWebChatBundle` | Mantém widgets, sessões e mensagens e implementa o transporte do canal Web Chat. |
 | `MauticInboxBundle` | Mantém estado do atendimento, atendentes, notas, rascunhos, contatos e sessões de IA. |
 | Pi/Codex | Executa somente agentes configurados e devolve as respostas pelo transporte do canal. |
@@ -42,7 +42,7 @@ O widget confirma entrega ao receber a mensagem e leitura quando a janela está 
 4. O cliente reconcilia a mensagem otimista com o identificador durável.
 5. Ao reconectar, o cliente solicita o histórico HTTP e elimina duplicatas.
 
-Se o WebSocket falhar, o envio e o histórico continuam por HTTP. A interface indica reconexão sem apagar o editor ou o histórico local.
+Se o SSE falhar, o envio e o histórico continuam por HTTP. A interface indica reconexão sem apagar o editor ou o histórico local.
 
 ## Fronteiras de segurança
 
@@ -57,3 +57,7 @@ Se o WebSocket falhar, o envio e o histórico continuam por HTTP. A interface in
 ## Integração de IA
 
 O Web Chat não chama o modelo diretamente. O Inbox seleciona o agente e monta seu contexto publicado, executa o Pi/Codex e chama o transporte para responder. Essa separação mantém as regras de canal, o contador de mensagens, a tomada humana e o encerramento num único lugar.
+
+## Transporte 1.2
+
+SSE envia notificações do servidor para os clientes. POST HTTP envia mensagens, digitação e leitura ao Mautic com token HMAC de sessão/papel. O broker PHP Workerman escuta em loopback, é supervisionado por systemd e mantém memória/buffers/conexões limitados. Não há Node.js/PM2 no transporte. IA executa no worker Inbox fora de FPM. Veja limites, índices, consultas em lote e migração no guia de operação.

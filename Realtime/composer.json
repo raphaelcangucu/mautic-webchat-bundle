@@ -1,0 +1,7 @@
+{
+  "name": "macro-markets/webchat-sse",
+  "description": "Bounded PHP SSE broker for Mautic WebChat, independent of PHP-FPM.",
+  "type": "project",
+  "license": "GPL-3.0-or-later",
+  "require": {"php": ">=8.2", "workerman/workerman": "^5.2.2"}
+}

@@ -86,7 +86,7 @@ JS;
         ]);
         $response->headers->remove('X-Frame-Options');
         $ancestors = array_map(static fn (string $domain): string => 'https://'.$domain, $widget->getAllowedDomains());
-        $response->headers->set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: ws:; img-src 'self' data: https:; frame-ancestors 'self' ".implode(' ', $ancestors));
+        $response->headers->set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; frame-ancestors 'self' ".implode(' ', $ancestors));
         $response->headers->set('Cache-Control', 'no-store');
         return $response;
     }

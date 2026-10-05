@@ -19,17 +19,18 @@ location ~ ^/chat/(?:widget|demo)/pub_[A-Za-z0-9_-]+$ {
     try_files /__mautic_webchat_dynamic__ @mautic_webchat_public;
 }
 
-location /chat/realtime {
+location = /chat/realtime {
     proxy_pass http://127.0.0.1:8790;
     proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
+    proxy_set_header Connection "";
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_read_timeout 75s;
+    proxy_read_timeout 60s;
     proxy_send_timeout 75s;
     proxy_buffering off;
+    proxy_cache off;
+    gzip off;
 }
 
 location @mautic_webchat_public {
