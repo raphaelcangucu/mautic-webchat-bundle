@@ -12,6 +12,8 @@
   const publicKey = root.dataset.publicKey || "";
   const initialConfig = JSON.parse(root.dataset.config || "{}") as WidgetConfig;
   let config = initialConfig;
+  $: brandName = config.name.replace(/^chat\s+/i, "").trim() || "Atendimento";
+  $: brandInitial = brandName.slice(0, 1).toUpperCase();
   let bootstrap: Bootstrap | null = null;
   let parentOrigin = "*";
   let open = false;
@@ -485,7 +487,7 @@
   <section class="panel" aria-label="Atendimento online">
     <header>
       <div class="brand">
-        <span class="brand-mark">M</span>
+        <span class="brand-mark">{brandInitial}</span>
         <div>
           <strong>{config.name}</strong><small
             ><i class:online={connection === "online"}></i>{connection ===
@@ -505,7 +507,7 @@
     </header>
     {#if !started}
       <div class="welcome">
-        <div class="welcome-icon">M</div>
+        <div class="welcome-icon">{brandInitial}</div>
         <h1>{config.greeting}</h1>
         <p>Converse com nossa equipe sem sair desta página.</p>
         <form on:submit|preventDefault={start}>
@@ -541,16 +543,16 @@
       <div class="messages" bind:this={list} aria-live="polite">
         <div class="day">Hoje</div>
         {#if !messages.length}<div class="greeting">
-            <span class="agent-avatar">M</span>
+            <span class="agent-avatar">{brandInitial}</span>
             <div>
-              <strong>Equipe Macro</strong>
+              <strong>Equipe {brandName}</strong>
               <p>{config.greeting}</p>
             </div>
           </div>{/if}
         {#each messages as message (message.client_id)}
           <article class:mine={message.direction === "visitor"} class="message">
             {#if message.direction !== "visitor"}<small class="author"
-                >{message.author || "Equipe Macro"}</small
+                >{message.author || `Equipe ${brandName}`}</small
               >{/if}
             <div class="bubble">{message.body}</div>
             <small
@@ -599,7 +601,7 @@
           ></button
         >
       </form>
-      <footer>Atendimento protegido pela Macro Markets</footer>
+      <footer>Atendimento por {brandName}</footer>
     {/if}
   </section>
 {/if}

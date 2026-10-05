@@ -21,6 +21,14 @@ Canal de chat incorporável para o [Mautic Omnichannel Inbox](https://github.com
 - contador de mensagens não lidas e aviso sonoro para novas respostas;
 - adaptação à área visível do teclado virtual em dispositivos móveis.
 
+## Identidade por widget
+
+Em **Web Chat**, cada widget tem nome, cor de destaque, saudação e conta do Inbox próprios. A inicial, a identificação da equipe e o rodapé acompanham o nome configurado, inclusive na prévia do editor. Por exemplo, **Chat Codificar** usa a inicial **C** e pode ter a cor verde `#168354` sem alterar o widget da Macro Markets.
+
+Para testar em uma landing page editável, crie uma página no **Mautic Pages** e inclua o código de instalação do widget antes de `</body>`. O botão da página também pode abrir o chat com `window.MauticWebChat.open()`.
+
+![Widget verde da Codificar em uma página do Mautic, com resposta em tempo real e confirmação de leitura](docs/screenshots/codificar-widget.png)
+
 ## Fluxo
 
 1. A página carrega `/chat/embed.js?id=pub_...`.
@@ -149,7 +157,7 @@ Quando o widget possui um agente inicial:
 - visitante e atendente usam tokens HMAC diferentes, vinculados à sessão e com expiração;
 - o segredo interno do gateway nunca é enviado ao navegador;
 - mensagens são persistidas antes da publicação em tempo real;
-- o gateway escuta em `127.0.0.1` por padrão e limita payloads a 64 KiB;
+- o gateway escuta em `127.0.0.1` por padrão e limita payloads a 16 KiB;
 - nome e e-mail podem criar ou vincular um contato, de acordo com a configuração do widget;
 - endpoints públicos são stateless e não inicializam a sessão administrativa do Mautic;
 - o loader e o HTML público podem receber cache curto no proxy sem armazenar APIs de sessão.

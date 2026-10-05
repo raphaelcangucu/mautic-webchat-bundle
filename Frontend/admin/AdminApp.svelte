@@ -64,6 +64,12 @@
     demo_url: "",
     sessions: 0,
   });
+  $: previewInitial =
+    (selected?.name || "Atendimento")
+      .replace(/^chat\s+/i, "")
+      .trim()
+      .slice(0, 1)
+      .toUpperCase() || "A";
   function choose(widget: Widget): void {
     selected = structuredClone(widget);
     domains = widget.allowed_domains.join("\n");
@@ -332,7 +338,7 @@
               style={`--accent:${selected.accent_color}`}
             >
               <header>
-                <span>M</span>
+                <span>{previewInitial}</span>
                 <div>
                   <strong>{selected.name || "Atendimento"}</strong><small
                     ><i></i> Conectado</small
@@ -343,11 +349,11 @@
               <div class="preview-body">
                 <small>Hoje</small>
                 <article>
-                  <em>M</em>
+                  <em>{previewInitial}</em>
                   <p>{selected.greeting || "Olá! Como podemos ajudar?"}</p>
                 </article>
                 <article class="mine">
-                  <p>Quero entender o relatório da rodada.</p>
+                  <p>Olá! Gostaria de conversar com a equipe.</p>
                   <small>14:32 · ✓✓ Lida</small>
                 </article>
                 <div class="typing">
