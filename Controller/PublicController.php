@@ -81,7 +81,7 @@ JS;
         }
         $response = $this->render('@MauticWebChat/Public/widget.html.twig', [
             'publicKey' => $publicKey,
-            'widgetConfig' => ['name' => $widget->getName(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(), 'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail()],
+            'widgetConfig' => ['name' => $widget->getName(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(), 'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail(), 'require_phone' => $widget->requiresPhone()],
             'assetVersion' => (string) (@filemtime(__DIR__.'/../Assets/dist/widget-app.js') ?: time()),
         ]);
         $response->headers->remove('X-Frame-Options');

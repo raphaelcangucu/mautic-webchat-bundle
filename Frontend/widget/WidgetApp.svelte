@@ -20,6 +20,7 @@
   let started = false;
   let name = localStorage.getItem(`mw-name:${publicKey}`) || "";
   let email = localStorage.getItem(`mw-email:${publicKey}`) || "";
+  let phone = localStorage.getItem(`mw-phone:${publicKey}`) || "";
   let body = "";
   let error = "";
   let loading = false;
@@ -119,9 +120,12 @@
     setOpen(!open);
   }
 
-  function identify(user: { name?: string; email?: string } = {}): void {
+  function identify(
+    user: { name?: string; email?: string; phone?: string } = {},
+  ): void {
     if (user.name) name = String(user.name);
     if (user.email) email = String(user.email);
+    if (user.phone) phone = String(user.phone);
   }
 
   function reset(): void {
@@ -132,9 +136,10 @@
     started = false;
     name = "";
     email = "";
+    phone = "";
     body = "";
     error = "";
-    ["session", "token", "name", "email", "visitor"].forEach((key) =>
+    ["session", "token", "name", "email", "phone", "visitor"].forEach((key) =>
       localStorage.removeItem(`mw-${key}:${publicKey}`),
     );
     setOpen(false);
@@ -143,12 +148,18 @@
   async function start(): Promise<void> {
     if (!bootstrap || loading) return;
     error = "";
-    if (config.require_name && !name.trim()) {
+    const saved = stored();
+    const resuming = !!saved.resume_session && !!saved.resume_token;
+    if (!resuming && config.require_name && !name.trim()) {
       error = "Informe seu nome para continuar.";
       return;
     }
-    if (config.require_email && !/^\S+@\S+\.\S+$/.test(email)) {
+    if (!resuming && config.require_email && !/^\S+@\S+\.\S+$/.test(email)) {
       error = "Informe um e-mail válido.";
+      return;
+    }
+    if (!resuming && config.require_phone && !phone.trim()) {
+      error = "Informe seu telefone para continuar.";
       return;
     }
     loading = true;
@@ -163,6 +174,7 @@
             visitor_id: visitorId(),
             name: name.trim(),
             email: email.trim(),
+            phone: phone.trim(),
             site_origin: bootstrap.siteOrigin,
             page_url: bootstrap.pageUrl,
             referrer: bootstrap.referrer,
@@ -182,6 +194,7 @@
       localStorage.setItem(`mw-token:${publicKey}`, session.session_token);
       localStorage.setItem(`mw-name:${publicKey}`, name);
       localStorage.setItem(`mw-email:${publicKey}`, email);
+      localStorage.setItem(`mw-phone:${publicKey}`, phone);
       connect();
       markRead();
     } catch (problem) {
@@ -292,6 +305,7 @@
             visitor_id: visitorId(),
             name: name.trim(),
             email: email.trim(),
+            phone: phone.trim(),
             site_origin: bootstrap.siteOrigin,
             page_url: bootstrap.pageUrl,
             referrer: bootstrap.referrer,
@@ -528,6 +542,17 @@
               maxlength="190"
               required={config.require_email}
               placeholder="voce@exemplo.com"
+            /></label
+          >
+          <label
+            >Telefone {config.require_phone ? "" : "(opcional)"}<input
+              bind:value={phone}
+              type="tel"
+              inputmode="tel"
+              autocomplete="tel"
+              maxlength="50"
+              required={config.require_phone}
+              placeholder="DDD + número ou +código do país"
             /></label
           >
           {#if error}<div class="error" role="alert">{error}</div>{/if}

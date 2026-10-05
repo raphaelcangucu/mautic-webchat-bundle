@@ -14,6 +14,7 @@ use MauticPlugin\MauticInboxBundle\Entity\OutboundRequest;
 use MauticPlugin\MauticInboxBundle\Integration\MetaInboxIntegration;
 use MauticPlugin\MauticMetaBundle\Entity\MetaConversation;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessage;
+use MauticPlugin\MauticMetaBundle\Application\WhatsApp\PhoneNormalizer;
 use MauticPlugin\MauticWebChatBundle\Entity\ChatMessage;
 use MauticPlugin\MauticWebChatBundle\Entity\ChatMessageRepository;
 use MauticPlugin\MauticWebChatBundle\Entity\ChatSession;
@@ -36,6 +37,7 @@ final class ChatService
         private GatewayClient $gateway,
         private RealtimeTokenSigner $tokens,
         private WidgetOrigin $origins,
+        private PhoneNormalizer $phones = new PhoneNormalizer(),
     ) {
     }
 
@@ -52,15 +54,7 @@ final class ChatService
         }
         $name = mb_substr(trim((string) ($input['name'] ?? '')), 0, 120);
         $email = strtolower(mb_substr(trim((string) ($input['email'] ?? '')), 0, 190));
-        if ($widget->requiresName() && '' === $name) {
-            throw new \DomainException('Informe seu nome para iniciar o atendimento.');
-        }
-        if ($widget->requiresEmail() && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            throw new \DomainException('Informe um e-mail válido para iniciar o atendimento.');
-        }
-        if ('' !== $email && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            throw new \DomainException('O e-mail informado não é válido.');
-        }
+        $phone = trim((string) ($input['phone'] ?? ''));
 
         $plainToken = trim((string) ($input['resume_token'] ?? ''));
         $publicId = trim((string) ($input['resume_session'] ?? ''));
@@ -69,8 +63,37 @@ final class ChatService
             $session = null;
             $plainToken = bin2hex(random_bytes(32));
         }
-        $contact = $session instanceof ChatSession && $session->getVisitorName() === ('' === $name ? null : $name) && $session->getVisitorEmail() === ('' === $email ? null : $email)
-            ? $session->getContact() : $this->contact($name, $email);
+        // An authenticated existing session survives later changes to required fields.
+        if ($session instanceof ChatSession) {
+            $name = '' !== $name ? $name : ($session->getVisitorName() ?? '');
+            $email = '' !== $email ? $email : ($session->getVisitorEmail() ?? '');
+            $phone = '' !== $phone ? $phone : ($session->getVisitorPhone() ?? '');
+        } else {
+            if ($widget->requiresName() && '' === $name) {
+                throw new \DomainException('Informe seu nome para iniciar o atendimento.');
+            }
+            if ($widget->requiresEmail() && '' === $email) {
+                throw new \DomainException('Informe um e-mail válido para iniciar o atendimento.');
+            }
+            if ($widget->requiresPhone() && '' === $phone) {
+                throw new \DomainException('Informe seu telefone para iniciar o atendimento.');
+            }
+        }
+        if ('' !== $email && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new \DomainException('O e-mail informado não é válido.');
+        }
+        if ('' !== $phone) {
+            if (strlen($phone) > 50) {
+                throw new \DomainException('Informe um telefone válido com DDD ou código do país.');
+            }
+            try {
+                $phone = '+'.$this->phones->normalize($phone, (string) ($widget->getAsset()->getSettings()['default_region'] ?? 'BR'));
+            } catch (\InvalidArgumentException) {
+                throw new \DomainException('Informe um telefone válido com DDD ou código do país.');
+            }
+        }
+        $contact = $session instanceof ChatSession && $session->getVisitorName() === ('' === $name ? null : $name) && $session->getVisitorEmail() === ('' === $email ? null : $email) && $session->getVisitorPhone() === ('' === $phone ? null : $phone)
+            ? $session->getContact() : $this->contact($name, $email, $phone);
         if (!$session instanceof ChatSession) {
             $conversation = (new MetaConversation())
                 ->setAsset($widget->getAsset())
@@ -94,6 +117,7 @@ final class ChatService
         }
         $session->setVisitorName('' === $name ? null : $name)
             ->setVisitorEmail('' === $email ? null : $email)
+            ->setVisitorPhone('' === $phone ? null : $phone)
             ->setPageUrl($this->url($input['page_url'] ?? null))
             ->setReferrer($this->url($input['referrer'] ?? null))
             ->setUtm($this->utm($input['utm'] ?? []))
@@ -141,7 +165,7 @@ final class ChatService
 
         $conversation = $session->getConversation();
         $now = new \DateTimeImmutable();
-        $profile = array_filter(['name' => $session->getVisitorName(), 'email' => $session->getVisitorEmail()]);
+        $profile = array_filter(['name' => $session->getVisitorName(), 'email' => $session->getVisitorEmail(), 'phone' => $session->getVisitorPhone()]);
         $meta = (new MetaMessage())
             ->setAsset($conversation->getAsset())
             ->setConversation($conversation)
@@ -298,12 +322,12 @@ final class ChatService
     /** @return array<string,mixed> */
     public function widgetData(ChatWidget $widget): array
     {
-        return ['name' => $widget->getName(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(), 'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail()];
+        return ['name' => $widget->getName(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(), 'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail(), 'require_phone' => $widget->requiresPhone()];
     }
 
-    private function contact(string $name, string $email): ?Lead
+    private function contact(string $name, string $email, string $phone): ?Lead
     {
-        if ('' === $email && '' === $name) {
+        if ('' === $email && '' === $name && '' === $phone) {
             return null;
         }
         $matches = '' === $email ? [] : $this->leads->getRepository()->getLeadsByFieldValue('email', $email);
@@ -313,6 +337,7 @@ final class ChatService
             'firstname' => $parts[0] ?? null,
             'lastname' => $parts[1] ?? null,
             'email' => '' !== $email ? $email : null,
+            'mobile' => '' !== $phone ? $phone : null,
         ], static fn (mixed $value): bool => null !== $value && '' !== $value);
         if ([] !== $fields) {
             $this->leads->setFieldValues($contact, $fields, true);

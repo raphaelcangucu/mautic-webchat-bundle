@@ -22,6 +22,7 @@ class ChatSession extends CommonEntity
     private string $visitorId = '';
     private ?string $visitorName = null;
     private ?string $visitorEmail = null;
+    private ?string $visitorPhone = null;
     private string $siteOrigin = '';
     private ?string $pageUrl = null;
     private ?string $referrer = null;
@@ -57,6 +58,7 @@ class ChatSession extends CommonEntity
         $b->addField('visitorId', Types::STRING, ['columnName' => 'visitor_id', 'length' => 64]);
         $b->addNullableField('visitorName', Types::STRING, 'visitor_name');
         $b->addNullableField('visitorEmail', Types::STRING, 'visitor_email');
+        $b->createField('visitorPhone', Types::STRING)->columnName('visitor_phone')->length(32)->nullable()->build();
         $b->addField('siteOrigin', Types::STRING, ['columnName' => 'site_origin', 'length' => 255]);
         $b->addNullableField('pageUrl', Types::STRING, 'page_url');
         $b->addNullableField('referrer', Types::STRING);
@@ -86,6 +88,8 @@ class ChatSession extends CommonEntity
     public function setVisitorName(?string $v): self { $this->visitorName = '' === trim((string) $v) ? null : trim((string) $v); return $this->touch(); }
     public function getVisitorEmail(): ?string { return $this->visitorEmail; }
     public function setVisitorEmail(?string $v): self { $this->visitorEmail = '' === trim((string) $v) ? null : strtolower(trim((string) $v)); return $this->touch(); }
+    public function getVisitorPhone(): ?string { return $this->visitorPhone; }
+    public function setVisitorPhone(?string $v): self { $this->visitorPhone = '' === trim((string) $v) ? null : trim((string) $v); return $this->touch(); }
     public function getSiteOrigin(): string { return $this->siteOrigin; }
     public function setSiteOrigin(string $v): self { $this->siteOrigin = trim($v); return $this; }
     public function getPageUrl(): ?string { return $this->pageUrl; }

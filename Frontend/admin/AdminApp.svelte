@@ -12,6 +12,7 @@
     accent_color: string;
     require_name: boolean;
     require_email: boolean;
+    require_phone: boolean;
     ai_agent_key?: string | null;
     asset_id: number;
     asset_name: string;
@@ -57,6 +58,7 @@
     accent_color: "#4e5ba6",
     require_name: true,
     require_email: false,
+    require_phone: false,
     ai_agent_key: "",
     asset_id: assets[0]?.id || 0,
     asset_name: assets[0]?.name || "",
@@ -298,6 +300,9 @@
             ><label
               ><input type="checkbox" bind:checked={selected.require_email} /> Pedir
               e-mail</label
+            ><label
+              ><input type="checkbox" bind:checked={selected.require_phone} /> Pedir
+              telefone</label
             >
           </div>
           {#if selected.id}<div class="install">

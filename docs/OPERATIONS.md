@@ -44,6 +44,17 @@ CREATE INDEX inbox_message_inbound ON meta_messages (conversation_id, direction,
 
 Aplique somente índices ausentes, com `ALGORITHM=INPLACE, LOCK=NONE` quando suportado; adapte o prefixo real. Não execute atualização geral de schema. A metadata de WebChat registra o primeiro, e o Inbox registra os dois últimos pelo listener `ChatQueryIndexes`.
 
+### Telefone no formulário inicial
+
+A identificação por telefone acrescenta duas colunas. Antes de atualizar o código de uma instalação existente, confirme que elas ainda não existem, faça um backup novo e verifique sua integridade. Aplique somente as colunas ausentes, adaptando o prefixo e o algoritmo à versão do banco:
+
+```sql
+ALTER TABLE webchat_widgets ADD COLUMN require_phone TINYINT(1) NOT NULL DEFAULT 0, ALGORITHM=INPLACE, LOCK=NONE;
+ALTER TABLE webchat_sessions ADD COLUMN visitor_phone VARCHAR(32) DEFAULT NULL, ALGORITHM=INPLACE, LOCK=NONE;
+```
+
+Depois de instalar o código, limpe e aqueça o cache de produção e invalide o HTML/assets públicos do widget. O padrão `require_phone=0` preserva a configuração dos widgets existentes; a obrigatoriedade é ativada individualmente no editor. O telefone usa a normalização do conector Meta, com `default_region` da conta vinculada, e é salvo no contato sem criar autorização de mensagens WhatsApp. Não é necessário um índice para essas colunas: elas não participam da busca de conversas.
+
 O histórico usa uma projeção escalar de no máximo 100 mensagens. Marcadores de leitura usam `GREATEST` para preservar o avanço entre abas concorrentes. Leituras repetidas retornam sem escrita/publicação; uma leitura nova atualiza WebChat, Meta e envios humanos em três statements dentro de uma transação, sem consultas por mensagem. A lista do Inbox busca últimas mensagens e identidades em dois SELECTs por página. O WebChat busca sessões/widgets/contatos e previews em mais dois SELECTs por página, pelo contrato opcional `BatchChannelTransportInterface`. Reconectar não salva novamente um contato cuja identidade não mudou.
 
 ## Diagnóstico e rollback

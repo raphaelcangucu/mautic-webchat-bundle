@@ -5,6 +5,7 @@ export interface WidgetConfig {
   accent_color: string;
   require_name: boolean;
   require_email: boolean;
+  require_phone?: boolean;
 }
 export interface ChatMessage {
   id: number;
@@ -34,6 +35,6 @@ export interface Bootstrap {
   pageUrl: string;
   referrer: string;
   utm: Record<string, string>;
-  user?: { name?: string; email?: string };
+  user?: { name?: string; email?: string; phone?: string };
   message?: string;
 }

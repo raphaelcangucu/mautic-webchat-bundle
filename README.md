@@ -7,7 +7,7 @@ Canal de chat incorporável para o [Mautic Omnichannel Inbox](https://github.com
 ## O que entrega
 
 - widget responsivo e isolado em `iframe`, instalado por uma única tag `script`;
-- sessão retomável, histórico durável e identificação opcional por nome e e-mail;
+- sessão retomável, histórico durável e identificação por nome, e-mail e telefone, com obrigatoriedade configurável por widget;
 - SSE autenticado com presença e indicadores de digitação dos dois lados;
 - confirmações de entrega e leitura para visitante e atendente;
 - entrada no Inbox com canal, página de origem, referência e UTMs;
@@ -24,6 +24,10 @@ Canal de chat incorporável para o [Mautic Omnichannel Inbox](https://github.com
 ## Identidade por widget
 
 Em **Web Chat**, cada widget tem nome, cor de destaque, saudação e conta do Inbox próprios. A inicial, a identificação da equipe e o rodapé acompanham o nome configurado, inclusive na prévia do editor. Por exemplo, **Chat Codificar** usa a inicial **C** e pode ter a cor verde `#168354` sem alterar o widget da Macro Markets.
+
+O formulário inicial pede **nome, e-mail e telefone**. As opções **Pedir nome**, **Pedir e-mail** e **Pedir telefone** tornam cada campo obrigatório para novas conversas. O telefone aceita DDD no país configurado na conta ou um número internacional com `+`, é validado no servidor e salvo em E.164 no campo **Mobile** do contato Mautic e na sessão do chat. Informar telefone não registra consentimento para WhatsApp. Sessões já autenticadas continuam podendo retomar o histórico após alterações de obrigatoriedade.
+
+![Formulário inicial com nome, e-mail e telefone obrigatórios](docs/screenshots/widget-contact-form.png)
 
 Para testar em uma landing page editável, crie uma página no **Mautic Pages** e inclua o código de instalação do widget antes de `</body>`. O botão da página também pode abrir o chat com `window.MauticWebChat.open()`.
 
@@ -124,6 +128,7 @@ O loader publica `window.MauticWebChat` e mantém comandos em fila enquanto o `i
 window.MauticWebChat?.identify({
   name: usuario.nome,
   email: usuario.email,
+  phone: usuario.telefone,
 });
 window.MauticWebChat?.open();
 window.MauticWebChat?.openWithMessage('Preciso de ajuda com meu cadastro');
