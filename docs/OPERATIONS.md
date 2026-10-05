@@ -28,7 +28,7 @@ journalctl -u mautic-webchat-sse -n 30
 systemctl status mautic-inbox-ai.timer
 ```
 
-O health deve informar `runtime=php`, `transport=sse`, conexões e bytes de replay. Nenhum fluxo deve chamar `/chat/api/realtime/ingest`; esse endpoint antigo foi removido. POST `/chat/api/realtime/events` autentica o token HMAC, resolve a identidade no servidor e limita eventos por sessão/papel. O navegador serializa ações, confirma leitura uma vez por ID e limita digitação a um evento a cada dois segundos. O indicador expira em seis segundos.
+O health deve informar `runtime=php`, `transport=sse`, conexões e bytes de replay. Nenhum fluxo deve chamar `/chat/api/realtime/ingest`; esse endpoint antigo foi removido. POST `/chat/api/realtime/events` autentica o token HMAC, resolve a identidade no servidor e limita eventos por sessão/papel. O navegador serializa ações, confirma leitura uma vez por ID e limita digitação a um evento a cada dois segundos. O indicador humano expira em seis segundos; o evento do worker de IA pode durar até 120 segundos, com parada explícita ao concluir.
 
 Mensagens são persistidas antes de publicar. O ACK HTTP reconcilia o envio se a conexão SSE estiver indisponível. Som, contador de não lidas, API JavaScript, identificação e ajuste de teclado móvel permanecem ativos.
 
@@ -44,7 +44,7 @@ CREATE INDEX inbox_message_inbound ON meta_messages (conversation_id, direction,
 
 Aplique somente índices ausentes, com `ALGORITHM=INPLACE, LOCK=NONE` quando suportado; adapte o prefixo real. Não execute atualização geral de schema. A metadata de WebChat registra o primeiro, e o Inbox registra os dois últimos pelo listener `ChatQueryIndexes`.
 
-O histórico usa uma projeção escalar de no máximo 100 mensagens. Leituras repetidas retornam sem escrita/publicação; uma leitura nova atualiza WebChat, Meta e envios humanos em três statements dentro de uma transação, sem consultas por mensagem. A lista do Inbox busca últimas mensagens e identidades em dois SELECTs por página. O WebChat busca sessões/widgets/contatos e previews em mais dois SELECTs por página, pelo contrato opcional `BatchChannelTransportInterface`. Reconectar não salva novamente um contato cuja identidade não mudou.
+O histórico usa uma projeção escalar de no máximo 100 mensagens. Marcadores de leitura usam `GREATEST` para preservar o avanço entre abas concorrentes. Leituras repetidas retornam sem escrita/publicação; uma leitura nova atualiza WebChat, Meta e envios humanos em três statements dentro de uma transação, sem consultas por mensagem. A lista do Inbox busca últimas mensagens e identidades em dois SELECTs por página. O WebChat busca sessões/widgets/contatos e previews em mais dois SELECTs por página, pelo contrato opcional `BatchChannelTransportInterface`. Reconectar não salva novamente um contato cuja identidade não mudou.
 
 ## Diagnóstico e rollback
 

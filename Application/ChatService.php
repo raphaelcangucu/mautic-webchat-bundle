@@ -234,6 +234,7 @@ final class ChatService
             'type' => $active ? 'typing.started' : 'typing.stopped',
             'role' => 'agent',
             'name' => $name,
+            'expires_in' => $active ? 120 : 0,
         ]);
     }
 
@@ -253,15 +254,13 @@ final class ChatService
         $this->em->getConnection()->transactional(function () use ($session, $role, $kind, $messageId, $lastRead): void {
             if ('visitor' === $role) {
                 $this->messages->advanceReceipts($session, $kind, (int) $lastRead, $messageId);
-                if ('read' === $kind) $session->setVisitorLastReadMessageId($messageId);
             } else {
                 $this->messages->markVisitorRead($session, (int) $lastRead, $messageId);
-                $session->setAgentLastReadMessageId($messageId);
                 $session->getConversation()->setUnreadCount(0);
                 $this->em->persist($session->getConversation());
             }
-            $session->seen();
-            $this->em->persist($session);
+            $this->messages->touchReceiptSession($session, $role, $kind, $messageId);
+            $this->em->refresh($session);
             $this->em->flush();
         });
         $this->safePublish($session, ['type' => 'message.'.$kind, 'message_id' => $messageId, 'role' => $role, 'at' => gmdate(DATE_ATOM)]);

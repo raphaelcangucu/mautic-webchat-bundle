@@ -34,6 +34,21 @@ final class ChatMessageRepository extends CommonRepository
         }, $rows));
     }
 
+    /** Atomic high-water update prevents older receipts from overwriting a newer tab's read state. */
+    public function touchReceiptSession(ChatSession $session, string $role, string $kind, int $through): void
+    {
+        $em = $this->getEntityManager();
+        $db = $em->getConnection();
+        $sessions = $db->quoteIdentifier($em->getClassMetadata(ChatSession::class)->getTableName());
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        if ('read' === $kind) {
+            $column = 'visitor' === $role ? 'visitor_last_read_message_id' : 'agent_last_read_message_id';
+            $db->executeStatement("UPDATE $sessions SET $column = GREATEST(COALESCE($column, 0), ?), last_seen_at = ?, date_modified = ? WHERE id = ?", [$through, $now, $now, $session->getId()]);
+        } else {
+            $db->executeStatement("UPDATE $sessions SET last_seen_at = ?, date_modified = ? WHERE id = ?", [$now, $now, $session->getId()]);
+        }
+    }
+
     public function markVisitorRead(ChatSession $session, int $after, int $through): void
     {
         $em = $this->getEntityManager();

@@ -254,7 +254,7 @@
           clearTimeout(agentTypingTimer);
           agentTypingTimer = window.setTimeout(
             () => (agentTyping = false),
-            6000,
+            Math.min(120, Math.max(2, Number(event.expires_in) || 6)) * 1000,
           );
         } else if (event.type === "typing.stopped" && event.role === "agent")
           agentTyping = false;
