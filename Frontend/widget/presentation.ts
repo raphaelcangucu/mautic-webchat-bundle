@@ -216,8 +216,14 @@ export function resolveTheme(
         : "light"
       : options.appearance;
   const palette = { ...base[variant] };
-  if (id === "classic" && /^#[0-9a-f]{6}$/i.test(legacyColor))
+  if (id === "classic" && /^#[0-9a-f]{6}$/i.test(legacyColor)) {
     palette.primary = legacyColor;
+    if (variant === "dark")
+      palette.buttonText =
+        contrast("#FFFFFF", legacyColor) >= contrast("#171B24", legacyColor)
+          ? "#FFFFFF"
+          : "#171B24";
+  }
   if (id === "macro")
     Object.assign(palette, safePalette(site.palettes?.[variant]));
   Object.assign(palette, safePalette(saved[variant]));

@@ -15,6 +15,19 @@ test("existing widgets retain their own accent and classic light appearance", ()
   assert.equal(t.variant, "light");
   assert.equal(t.colors.primary, "#008844");
 });
+test("classic dark buttons remain readable with inherited legacy accents and retain explicit text overrides", () => {
+  const p: Presentation = {
+    ...defaultPresentation(),
+    overrides: { classic: { options: { appearance: "dark" } } },
+  };
+  for (const accent of ["#4e5ba6", "#ffffff", "#000000", "#008844"]) {
+    const t = resolveTheme(p, {}, accent);
+    assert.equal(t.colors.primary, accent);
+    assert.ok(contrast(t.colors.buttonText, accent) >= 4.5);
+  }
+  p.overrides.classic!.dark = { buttonText: "#ffff00" };
+  assert.equal(resolveTheme(p).colors.buttonText, "#ffff00");
+});
 test("manual theme overrides win over site tokens without affecting other themes or variants", () => {
   const p: Presentation = {
     ...defaultPresentation(),
