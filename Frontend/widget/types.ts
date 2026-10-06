@@ -35,6 +35,7 @@ export interface SessionData {
 export interface Bootstrap {
   siteOrigin: string;
   pageUrl: string;
+  pageTitle?: string;
   referrer: string;
   utm: Record<string, string>;
   user?: {

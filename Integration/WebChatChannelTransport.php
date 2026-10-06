@@ -114,6 +114,7 @@ final class WebChatChannelTransport implements ChannelTransportInterface, BatchC
                 'external_id' => $session->getContext()['subject'] ?? null,
                 'identity_verified' => null !== ($session->getContext()['subject'] ?? null),
                 'page_url' => $pageUrl,
+                'page_title' => $session->getContext()['page_title'] ?? '',
                 'site_origin' => $session->getSiteOrigin(),
                 'referrer' => $session->getReferrer(),
                 'utm' => $session->getUtm(),

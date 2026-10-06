@@ -186,7 +186,7 @@
                 >{/each}</select
             ></label
           >{/each}
-        {#each [{ key: "radius", label: "Cantos do painel", min: 0, max: 24 }, { key: "controlRadius", label: "Cantos dos campos", min: 0, max: 16 }, { key: "controlHeight", label: "Altura dos campos", min: 40, max: 56 }, { key: "width", label: "Largura do chat", min: 320, max: 480 }] as item}<label
+        {#each [{ key: "fontSize", label: "Tamanho do texto", min: 12, max: 18 }, { key: "radius", label: "Cantos do painel", min: 0, max: 24 }, { key: "controlRadius", label: "Cantos dos campos", min: 0, max: 16 }, { key: "controlHeight", label: "Altura dos campos", min: 40, max: 56 }, { key: "width", label: "Largura do chat", min: 320, max: 480 }] as item}<label
             >{item.label} · {theme.options[item.key as keyof Options]}px<input
               type="range"
               min={item.min}
@@ -439,6 +439,7 @@
     box-shadow: var(--wc-shadow);
     color: var(--wc-text);
     font-family: var(--wc-font);
+    font-size: var(--wc-font-size);
     background: var(--wc-surface);
     overflow: hidden;
   }
@@ -489,7 +490,7 @@
   .welcome h3 {
     margin: 0 0 8px;
     color: var(--wc-title);
-    font-size: 20px;
+    font-size: var(--wc-heading-size);
   }
   .welcome p,
   .welcome > small {

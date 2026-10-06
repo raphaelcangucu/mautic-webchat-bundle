@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { afterUpdate, onDestroy, onMount } from "svelte";
+  import { afterUpdate, onDestroy, onMount, tick } from "svelte";
   import { RealtimeClient } from "./realtime";
   import {
     resolveTheme,
@@ -223,7 +223,7 @@
     if (next.accountPending !== undefined)
       identityPending = next.accountPending;
     if (bootstrap) bootstrap.context = context;
-    if (started) void recoverHistory();
+    if (started) void tick().then(recoverHistory);
   }
   function reset(close = true): void {
     generation++;
@@ -324,6 +324,7 @@
                 : phone.trim(),
             site_origin: bootstrap.siteOrigin,
             page_url: bootstrap.pageUrl,
+            page_title: bootstrap.pageTitle,
             referrer: bootstrap.referrer,
             utm: bootstrap.utm,
           }),
@@ -470,6 +471,7 @@
                 : phone.trim(),
             site_origin: bootstrap.siteOrigin,
             page_url: bootstrap.pageUrl,
+            page_title: bootstrap.pageTitle,
             referrer: bootstrap.referrer,
             utm: bootstrap.utm,
           }),
@@ -526,7 +528,12 @@
     messages = [...messages, optimistic];
     body = "";
     stopTyping();
-    if (realtime?.sendMessage(text, clientId)) return;
+    const page = {
+      page_url: bootstrap?.pageUrl,
+      page_title: bootstrap?.pageTitle,
+      locale,
+    };
+    if (realtime?.sendMessage(text, clientId, page)) return;
     try {
       const response = await fetch(
         `/chat/api/sessions/${session.session}/messages`,
@@ -536,7 +543,7 @@
             "content-type": "application/json",
             authorization: `Bearer ${session.session_token}`,
           },
-          body: JSON.stringify({ body: text, client_id: clientId }),
+          body: JSON.stringify({ body: text, client_id: clientId, ...page }),
         },
       );
       const data = await response.json();
@@ -590,6 +597,7 @@
         bootstrap = {
           siteOrigin: event.origin,
           pageUrl: String(event.data.pageUrl || ""),
+          pageTitle: String(event.data.pageTitle || ""),
           referrer: String(event.data.referrer || ""),
           utm: event.data.utm || {},
           user: event.data.user || {},
@@ -617,6 +625,9 @@
       else if (event.data.action === "configure") {
         if (bootstrap) {
           bootstrap.pageUrl = String(event.data.pageUrl || bootstrap.pageUrl);
+          bootstrap.pageTitle = String(
+            event.data.pageTitle ?? bootstrap.pageTitle ?? "",
+          );
           bootstrap.utm = event.data.utm || bootstrap.utm;
         }
         configure(event.data.context);
@@ -676,6 +687,7 @@
     class:filled={theme.options.header === "filled"}
     class:minimal={theme.options.header === "minimal"}
     class:compact={theme.options.density === "compact"}
+    class:with-context={Boolean(bootstrap?.pageTitle)}
     aria-label={c.support}
   >
     <header>
@@ -703,6 +715,12 @@
       </div>
       <button class="close" on:click={toggle} aria-label={c.minimize}>−</button>
     </header>
+    {#if bootstrap?.pageTitle}
+      <div class="page-context" title={bootstrap.pageUrl}>
+        <span>{c.currentPage}</span>
+        {bootstrap.pageTitle}
+      </div>
+    {/if}
     {#if !started}
       <div class="welcome">
         <div class="welcome-icon">
@@ -847,6 +865,7 @@
     overflow: hidden;
     background: transparent;
     font-family: var(--wc-font, system-ui);
+    font-size: var(--wc-font-size, 14px);
     color: var(--wc-text);
     -webkit-text-size-adjust: 100%;
   }
@@ -916,6 +935,21 @@
     background: var(--wc-surface);
     color: var(--wc-button-text);
   }
+  .panel.with-context {
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  }
+  .page-context {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--wc-divider);
+    color: var(--wc-muted);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .page-context span {
+    color: var(--wc-text);
+  }
   .brand {
     display: flex;
     gap: 11px;
@@ -978,7 +1012,7 @@
     font-size: 20px;
   }
   .welcome h1 {
-    font-size: 21px;
+    font-size: var(--wc-heading-size, 18px);
     line-height: 1.3;
     margin: 17px 0 5px;
   }
@@ -1011,6 +1045,7 @@
     border-color: var(--wc-accent);
   }
   .primary {
+    font: inherit;
     height: var(--wc-control-height);
     border: 0;
     border-radius: var(--wc-control-radius);
@@ -1332,6 +1367,12 @@
   }
   .composer {
     grid-template-columns: 1fr 44px;
+  }
+  @media (pointer: fine) {
+    .welcome input,
+    .composer textarea {
+      font-size: var(--wc-font-size, 14px);
+    }
   }
   .composer button {
     width: 44px;

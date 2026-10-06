@@ -84,3 +84,24 @@ test("all locales have matching keys and errors stay in the selected language", 
   assert.equal(apiError("email_invalid", "es"), copy.es.emailError);
   assert.equal(contrast("#000000", "#ffffff"), 21);
 });
+test("site font and compact text scale are inherited safely, with configurable overrides", () => {
+  const p: Presentation = { ...defaultPresentation(), theme: "macro" };
+  const font = 'ui-sans-serif, system-ui, "Apple Color Emoji"';
+  const t = resolveTheme(p, { fontFamily: font });
+  assert.equal(t.fontFamily, font);
+  assert.equal(t.options.fontSize, 14);
+  assert.match(cssVariables(t), /--wc-heading-size:18px/);
+  p.overrides.macro = { options: { font: "arial", fontSize: 99 } };
+  const manual = resolveTheme(p, { fontFamily: font });
+  assert.match(manual.fontFamily, /Arial/);
+  assert.equal(manual.options.fontSize, 18);
+  assert.doesNotMatch(
+    cssVariables(
+      resolveTheme(
+        { ...p, overrides: {} },
+        { fontFamily: "system-ui; background:url(evil)" },
+      ),
+    ),
+    /url\(evil\)/,
+  );
+});

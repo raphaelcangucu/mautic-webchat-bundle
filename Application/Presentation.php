@@ -38,7 +38,7 @@ final class Presentation
                     $overrides['options'][$key] = $saved['options'][$key];
                 }
             }
-            foreach (['radius' => [0, 24], 'controlRadius' => [0, 16], 'controlHeight' => [40, 56], 'width' => [320, 480]] as $key => [$min, $max]) {
+            foreach (['radius' => [0, 24], 'controlRadius' => [0, 16], 'controlHeight' => [40, 56], 'width' => [320, 480], 'fontSize' => [12, 18]] as $key => [$min, $max]) {
                 if (isset($saved['options'][$key]) && is_numeric($saved['options'][$key])) {
                     $overrides['options'][$key] = max($min, min($max, (int) $saved['options'][$key]));
                 }
