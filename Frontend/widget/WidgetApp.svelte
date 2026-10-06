@@ -8,6 +8,7 @@
     type SiteContext,
   } from "./presentation";
   import { copy, normalizeLocale, apiError } from "./i18n";
+  import { identityScopeChanged } from "./identityScope";
   import type {
     Bootstrap,
     ChatMessage,
@@ -189,8 +190,11 @@
   function identify(user: NonNullable<Bootstrap["user"]> = {}): void {
     const subject = user.subject || "";
     if (
-      (identity.subject || "") !== subject ||
-      localStorage.getItem(`mw-subject:${publicKey}`) !== subject
+      identityScopeChanged(
+        identity.subject,
+        localStorage.getItem(`mw-subject:${publicKey}`),
+        subject,
+      )
     )
       reset(false);
     identity = { ...user };

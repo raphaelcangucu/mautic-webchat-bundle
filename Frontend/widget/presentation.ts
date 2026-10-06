@@ -236,6 +236,14 @@ export function resolveTheme(
   if (id === "macro")
     Object.assign(palette, safePalette(site.palettes?.[variant]));
   Object.assign(palette, safePalette(saved[variant]));
+  // Site button tokens can describe a tinted market button, while the chat
+  // uses a solid primary background for messages and the launcher.
+  if (contrast(palette.buttonText, palette.primary) < 4.5) {
+    const candidates = [palette.text, palette.title, "#000000", "#FFFFFF"];
+    palette.buttonText = candidates.find(
+      (color) => contrast(color, palette.primary) >= 4.5,
+    )!;
+  }
   const fontFamily =
     options.font === "site" && safeFont(site.fontFamily)
       ? site.fontFamily!

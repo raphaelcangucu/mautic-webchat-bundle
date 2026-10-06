@@ -84,6 +84,30 @@ test("all locales have matching keys and errors stay in the selected language", 
   assert.equal(apiError("email_invalid", "es"), copy.es.emailError);
   assert.equal(contrast("#000000", "#ffffff"), 21);
 });
+test("solid chat bubbles and launcher retain readable text with low-contrast site tokens", () => {
+  const p: Presentation = { ...defaultPresentation(), theme: "macro" };
+  for (const appearance of ["light", "dark"] as const) {
+    const t = resolveTheme(p, {
+      appearance,
+      palettes: { [appearance]: { primary: "#19C45B", buttonText: "#169C49" } },
+    });
+    assert.equal(t.colors.primary, "#19C45B");
+    assert.ok(contrast(t.colors.buttonText, t.colors.primary) >= 4.5);
+    assert.match(
+      cssVariables(t),
+      new RegExp(`--wc-button-text:${t.colors.buttonText}`),
+    );
+  }
+  p.overrides.macro = {
+    light: {
+      primary: "#FFFFFF",
+      buttonText: "#FFFFFF",
+      text: "#FFFFFF",
+      title: "#FFFFFF",
+    },
+  };
+  assert.equal(resolveTheme(p).colors.buttonText, "#000000");
+});
 test("site font and compact text scale are inherited safely, with configurable overrides", () => {
   const p: Presentation = { ...defaultPresentation(), theme: "macro" };
   const font = 'ui-sans-serif, system-ui, "Apple Color Emoji"';
