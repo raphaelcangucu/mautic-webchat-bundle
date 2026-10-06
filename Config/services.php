@@ -23,6 +23,11 @@ return function (ContainerConfigurator $configurator): void {
         '%env(MAUTIC_WEBCHAT_REALTIME_URL)%',
     ]);
     $services->set(GatewayClient::class)->autowire()->arg('$internalUrlValue', '%env(MAUTIC_WEBCHAT_REALTIME_INTERNAL_URL)%');
+    $services->set(\MauticPlugin\MauticWebChatBundle\Security\IdentityVerifier::class)->args([
+        '%env(default:webchat_identity_empty:MAUTIC_WEBCHAT_IDENTITY_PUBLIC_KEY)%',
+        '%env(default:webchat_identity_empty:MAUTIC_WEBCHAT_IDENTITY_ISSUER)%',
+    ]);
+    $configurator->parameters()->set('webchat_identity_empty', '');
     $services->set(WidgetOrigin::class);
     $services->set(\MauticPlugin\MauticWebChatBundle\Security\RealtimeRateLimit::class);
 };

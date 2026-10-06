@@ -14,6 +14,7 @@ use MauticPlugin\MauticMetaBundle\Entity\MetaConversation;
 class ChatSession extends CommonEntity
 {
     private $id;
+    private ?array $context = null;
     private ChatWidget $widget;
     private MetaConversation $conversation;
     private ?Lead $contact = null;
@@ -50,6 +51,7 @@ class ChatSession extends CommonEntity
             ->addIndex(['widget_id', 'visitor_id', 'status'], 'webchat_session_visitor')
             ->addIndex(['status', 'last_seen_at'], 'webchat_session_status');
         $b->addId();
+        $b->addNullableField('context', Types::JSON);
         $b->createManyToOne('widget', ChatWidget::class)->addJoinColumn('widget_id', 'id', false, false, 'CASCADE')->build();
         $b->createManyToOne('conversation', MetaConversation::class)->addJoinColumn('conversation_id', 'id', false, false, 'CASCADE')->build();
         $b->createManyToOne('contact', Lead::class)->addJoinColumn('contact_id', 'id', true, false, 'SET NULL')->build();
@@ -71,6 +73,8 @@ class ChatSession extends CommonEntity
         $b->addField('lastSeenAt', Types::DATETIME_IMMUTABLE, ['columnName' => 'last_seen_at']);
     }
 
+    public function getContext(): array { return $this->context ?? []; }
+    public function setContext(array $v): self { $this->context = $v; return $this->touch(); }
     public function getId(): ?int { return $this->id; }
     public function getWidget(): ChatWidget { return $this->widget; }
     public function setWidget(ChatWidget $v): self { $this->widget = $v; return $this; }

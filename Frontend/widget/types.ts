@@ -1,4 +1,6 @@
+import type { Presentation, SiteContext } from "./presentation";
 export interface WidgetConfig {
+  presentation?: Presentation;
   name: string;
   greeting: string;
   offline_message: string;
@@ -35,6 +37,13 @@ export interface Bootstrap {
   pageUrl: string;
   referrer: string;
   utm: Record<string, string>;
-  user?: { name?: string; email?: string; phone?: string };
+  user?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    subject?: string;
+    identityToken?: string;
+  };
+  context?: SiteContext;
   message?: string;
 }

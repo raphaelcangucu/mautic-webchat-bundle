@@ -1,5 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import ThemeEditor from "./ThemeEditor.svelte";
+  import {
+    defaultPresentation,
+    type Presentation,
+  } from "../widget/presentation";
   export let root: HTMLElement;
   interface Widget {
     id: number;
@@ -13,6 +18,7 @@
     require_name: boolean;
     require_email: boolean;
     require_phone: boolean;
+    presentation?: Presentation;
     ai_agent_key?: string | null;
     asset_id: number;
     asset_name: string;
@@ -74,6 +80,19 @@
       .toUpperCase() || "A";
   function choose(widget: Widget): void {
     selected = structuredClone(widget);
+    selected.presentation = selected.presentation?.version
+      ? selected.presentation
+      : {
+          ...defaultPresentation(),
+          fields: {
+            name: widget.require_name ? "required" : "optional",
+            email: widget.require_email ? "required" : "optional",
+            phone: widget.require_phone ? "required" : "optional",
+          },
+          translations: {
+            pt: { greeting: widget.greeting, offline: widget.offline_message },
+          },
+        };
     domains = widget.allowed_domains.join("\n");
     notice = "";
     error = "";
@@ -218,7 +237,7 @@
           Crie seu primeiro widget e copie o código para o site.
         </div>{/if}
     </aside>
-    {#if selected}<main class="wc-editor">
+    {#if selected}<main class="wc-editor theme-full">
         <section class="form-pane">
           <div class="section-title">
             <div>
@@ -277,34 +296,10 @@
               ></label
             >
           </div>
-          <label
-            >Mensagem de boas-vindas<textarea
-              class="form-control"
-              bind:value={selected.greeting}
-              rows="2"
-              maxlength="500"
-            ></textarea></label
-          >
-          <label
-            >Mensagem quando estiver desconectado<textarea
-              class="form-control"
-              bind:value={selected.offline_message}
-              rows="2"
-              maxlength="500"
-            ></textarea></label
-          >
-          <div class="checks">
-            <label
-              ><input type="checkbox" bind:checked={selected.require_name} /> Pedir
-              nome</label
-            ><label
-              ><input type="checkbox" bind:checked={selected.require_email} /> Pedir
-              e-mail</label
-            ><label
-              ><input type="checkbox" bind:checked={selected.require_phone} /> Pedir
-              telefone</label
-            >
-          </div>
+          <ThemeEditor
+            bind:value={selected.presentation}
+            legacyColor={selected.accent_color}
+          />
           {#if selected.id}<div class="install">
               <div>
                 <strong>Instalação</strong><span
@@ -332,47 +327,13 @@
               >{/if}
           </div>
         </section>
-        <aside class="preview-pane">
-          <div class="preview-title">
-            <strong>Prévia</strong><span>Desktop</span>
-          </div>
-          <div class="site-preview">
-            <div class="site-lines"><i></i><i></i><i></i></div>
-            <div
-              class="preview-chat"
-              style={`--accent:${selected.accent_color}`}
-            >
-              <header>
-                <span>{previewInitial}</span>
-                <div>
-                  <strong>{selected.name || "Atendimento"}</strong><small
-                    ><i></i> Conectado</small
-                  >
-                </div>
-                <b>−</b>
-              </header>
-              <div class="preview-body">
-                <small>Hoje</small>
-                <article>
-                  <em>{previewInitial}</em>
-                  <p>{selected.greeting || "Olá! Como podemos ajudar?"}</p>
-                </article>
-                <article class="mine">
-                  <p>Olá! Gostaria de conversar com a equipe.</p>
-                  <small>14:32 · ✓✓ Lida</small>
-                </article>
-                <div class="typing">
-                  <i></i><i></i><i></i> Atendimento está digitando…
-                </div>
-              </div>
-              <footer>Escreva uma mensagem <button>➤</button></footer>
-            </div>
-          </div>
-        </aside>
       </main>{/if}
   </div>{/if}
 
 <style>
+  .wc-editor.theme-full {
+    display: block;
+  }
   :global(#app-content) {
     background: #f6f7fa;
   }
@@ -529,13 +490,7 @@
     padding: 24px;
     overflow: auto;
   }
-  .preview-pane {
-    padding: 20px;
-    border-left: 1px solid #e3e6ed;
-    background: #f7f8fb;
-  }
-  .section-title,
-  .preview-title {
+  .section-title {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -585,14 +540,6 @@
     margin-top: 5px;
     color: #8b92a0;
     font-weight: 400;
-  }
-  .checks {
-    display: flex;
-    gap: 22px;
-    padding: 4px 0 17px;
-  }
-  .checks label {
-    margin: 0;
   }
   .switch {
     display: flex;
@@ -664,176 +611,9 @@
   .danger {
     color: #a83245;
   }
-  .preview-title span {
-    color: #81899a;
-    font-size: 11px;
-  }
-  .site-preview {
-    position: relative;
-    height: 610px;
-    padding: 24px 14px;
-    border: 1px solid #dfe3eb;
-    border-radius: 12px;
-    background: white;
-    overflow: hidden;
-  }
-  .site-lines {
-    display: grid;
-    gap: 10px;
-  }
-  .site-lines i {
-    height: 8px;
-    border-radius: 4px;
-    background: #eef0f4;
-  }
-  .site-lines i:nth-child(2) {
-    width: 72%;
-  }
-  .site-lines i:nth-child(3) {
-    width: 45%;
-  }
-  .preview-chat {
-    position: absolute;
-    right: 12px;
-    bottom: 12px;
-    width: 330px;
-    height: 500px;
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    border: 1px solid #dce0e9;
-    border-radius: 18px;
-    overflow: hidden;
-    background: white;
-    box-shadow: 0 17px 45px rgba(30, 39, 70, 0.18);
-  }
-  .preview-chat header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 13px;
-    background: var(--accent);
-    color: white;
-  }
-  .preview-chat header > span {
-    display: grid;
-    place-items: center;
-    width: 35px;
-    height: 35px;
-    border-radius: 11px;
-    background: white;
-    color: var(--accent);
-    font-weight: 800;
-  }
-  .preview-chat header div {
-    flex: 1;
-  }
-  .preview-chat header strong,
-  .preview-chat header small {
-    display: block;
-  }
-  .preview-chat header small {
-    margin-top: 2px;
-    color: rgba(255, 255, 255, 0.8);
-    font-size: 10px;
-  }
-  .preview-chat header small i {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #6de0a8;
-  }
-  .preview-chat header b {
-    font-size: 20px;
-  }
-  .preview-body {
-    padding: 17px 13px;
-    background: #f7f8fb;
-  }
-  .preview-body > small {
-    display: block;
-    margin: auto;
-    width: max-content;
-    padding: 3px 7px;
-    border-radius: 6px;
-    background: #e8ebf2;
-    color: #81899a;
-  }
-  .preview-body article {
-    display: flex;
-    gap: 7px;
-    margin-top: 16px;
-  }
-  .preview-body article em {
-    display: grid;
-    place-items: center;
-    width: 25px;
-    height: 25px;
-    border-radius: 8px;
-    background: var(--accent);
-    color: white;
-    font-style: normal;
-    font-size: 10px;
-  }
-  .preview-body article p {
-    max-width: 220px;
-    margin: 0;
-    padding: 9px 10px;
-    border-radius: 4px 12px 12px 12px;
-    background: white;
-    font-size: 12px;
-  }
-  .preview-body article.mine {
-    display: block;
-    margin-left: auto;
-    text-align: right;
-  }
-  .preview-body article.mine p {
-    display: inline-block;
-    border-radius: 12px 4px 12px 12px;
-    background: var(--accent);
-    color: white;
-    text-align: left;
-  }
-  .preview-body article.mine small {
-    display: block;
-    color: #777f90;
-    font-size: 9px;
-  }
-  .typing {
-    margin-top: 18px;
-    color: #7b8395;
-    font-size: 10px;
-  }
-  .typing i {
-    display: inline-block;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: #8f97a7;
-  }
-  .preview-chat footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 11px;
-    color: #8a91a0;
-    font-size: 11px;
-  }
-  .preview-chat footer button {
-    width: 32px;
-    height: 32px;
-    border: 0;
-    border-radius: 9px;
-    background: var(--accent);
-    color: white;
-  }
   @media (max-width: 1100px) {
     .wc-editor {
       grid-template-columns: 1fr;
-    }
-    .preview-pane {
-      display: none;
     }
   }
   @media (max-width: 760px) {

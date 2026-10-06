@@ -37,6 +37,7 @@ final class ChatService
         private GatewayClient $gateway,
         private RealtimeTokenSigner $tokens,
         private WidgetOrigin $origins,
+        private \MauticPlugin\MauticWebChatBundle\Security\IdentityVerifier $identities,
         private PhoneNormalizer $phones = new PhoneNormalizer(),
     ) {
     }
@@ -52,6 +53,14 @@ final class ChatService
         if (!preg_match('/^[A-Za-z0-9_-]{16,64}$/', $visitorId)) {
             throw new \DomainException('Identificador do visitante inválido.');
         }
+        $identityToken = trim((string) ($input['identity_token'] ?? ''));
+        $verified = '' !== $identityToken ? $this->identities->verify($identityToken, $widget->getPublicKey(), $origin) : null;
+        $locale = in_array($input['locale'] ?? '', ['pt', 'en', 'es'], true) ? $input['locale'] : 'pt';
+        if (null !== $verified) {
+            foreach (['name', 'email', 'phone'] as $field) $input[$field] = $verified[$field] ?? '';
+        } else {
+            foreach (['name', 'email', 'phone'] as $field) if ('hidden' === $widget->fieldPolicy($field)) $input[$field] = '';
+        }
         $name = mb_substr(trim((string) ($input['name'] ?? '')), 0, 120);
         $email = strtolower(mb_substr(trim((string) ($input['email'] ?? '')), 0, 190));
         $phone = trim((string) ($input['phone'] ?? ''));
@@ -59,7 +68,7 @@ final class ChatService
         $plainToken = trim((string) ($input['resume_token'] ?? ''));
         $publicId = trim((string) ($input['resume_session'] ?? ''));
         $session = '' !== $publicId ? $this->sessions->findOneBy(['publicId' => $publicId, 'widget' => $widget]) : null;
-        if (!$session instanceof ChatSession || !$session->tokenMatches($plainToken) || 'open' !== $session->getStatus()) {
+        if (!$session instanceof ChatSession || !$session->tokenMatches($plainToken) || 'open' !== $session->getStatus() || $session->getSiteOrigin() !== $origin || ($session->getContext()['subject'] ?? null) !== ($verified['sub'] ?? null)) {
             $session = null;
             $plainToken = bin2hex(random_bytes(32));
         }
@@ -68,32 +77,33 @@ final class ChatService
             $name = '' !== $name ? $name : ($session->getVisitorName() ?? '');
             $email = '' !== $email ? $email : ($session->getVisitorEmail() ?? '');
             $phone = '' !== $phone ? $phone : ($session->getVisitorPhone() ?? '');
-        } else {
-            if ($widget->requiresName() && '' === $name) {
-                throw new \DomainException('Informe seu nome para iniciar o atendimento.');
+        } elseif (null === $verified) {
+            if ('required' === $widget->fieldPolicy('name') && '' === $name) {
+                throw new \DomainException('name_required');
             }
-            if ($widget->requiresEmail() && '' === $email) {
-                throw new \DomainException('Informe um e-mail válido para iniciar o atendimento.');
+            if ('required' === $widget->fieldPolicy('email') && '' === $email) {
+                throw new \DomainException('email_invalid');
             }
-            if ($widget->requiresPhone() && '' === $phone) {
-                throw new \DomainException('Informe seu telefone para iniciar o atendimento.');
+            if ('required' === $widget->fieldPolicy('phone') && '' === $phone) {
+                throw new \DomainException('phone_invalid');
             }
         }
         if ('' !== $email && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            throw new \DomainException('O e-mail informado não é válido.');
+            throw new \DomainException('email_invalid');
         }
         if ('' !== $phone) {
             if (strlen($phone) > 50) {
-                throw new \DomainException('Informe um telefone válido com DDD ou código do país.');
+                throw new \DomainException('phone_invalid');
             }
             try {
                 $phone = '+'.$this->phones->normalize($phone, (string) ($widget->getAsset()->getSettings()['default_region'] ?? 'BR'));
             } catch (\InvalidArgumentException) {
-                throw new \DomainException('Informe um telefone válido com DDD ou código do país.');
+                if (null === $verified) throw new \DomainException('phone_invalid');
+                $phone = ''; // An account without a usable phone still has a signed stable ID.
             }
         }
         $contact = $session instanceof ChatSession && $session->getVisitorName() === ('' === $name ? null : $name) && $session->getVisitorEmail() === ('' === $email ? null : $email) && $session->getVisitorPhone() === ('' === $phone ? null : $phone)
-            ? $session->getContact() : $this->contact($name, $email, $phone);
+            ? $session->getContact() : $this->contact($name, $email, $phone, $verified['sub'] ?? null, $locale);
         if (!$session instanceof ChatSession) {
             $conversation = (new MetaConversation())
                 ->setAsset($widget->getAsset())
@@ -115,18 +125,24 @@ final class ChatService
             $session->setContact($contact);
             $session->getConversation()->setContact($contact);
         }
+        if (null !== $verified && $session->getId() && $contact instanceof Lead && ($session->getContext()['locale'] ?? null) !== $locale) {
+            $this->leads->setFieldValues($contact, ['preferred_locale' => Presentation::contactLocale($locale)], true);
+            $this->leads->saveEntity($contact);
+        }
+        $session->setContext(['locale' => $locale, 'subject' => $verified['sub'] ?? null]);
         $session->setVisitorName('' === $name ? null : $name)
             ->setVisitorEmail('' === $email ? null : $email)
             ->setVisitorPhone('' === $phone ? null : $phone)
             ->setPageUrl($this->url($input['page_url'] ?? null))
             ->setReferrer($this->url($input['referrer'] ?? null))
-            ->setUtm($this->utm($input['utm'] ?? []))
+            ->setUtm(array_replace($session->getUtm(), $this->utm($input['utm'] ?? [])))
             ->seen();
         $this->em->persist($session);
         $this->em->persist($session->getConversation());
         $this->em->flush();
 
         return [
+            'identity_verified' => null !== $verified,
             'session' => $session->getPublicId(),
             'session_token' => $plainToken,
             'realtime' => $this->tokens->issue($session->getPublicId(), 'visitor'),
@@ -176,7 +192,7 @@ final class ChatService
             ->setMessageType('text')
             ->setRecipient($conversation->getRecipient())
             ->setStatus('received')
-            ->setPayload(['text' => $body, 'contact' => ['profile' => $profile], 'webchat' => ['page_url' => $session->getPageUrl(), 'origin' => $session->getSiteOrigin()]]);
+            ->setPayload(['text' => $body, 'contact' => ['profile' => $profile], 'webchat' => ['page_url' => $session->getPageUrl(), 'origin' => $session->getSiteOrigin(), 'locale' => $session->getContext()['locale'] ?? 'pt', 'external_id' => $session->getContext()['subject'] ?? null]]);
         $message = (new ChatMessage())
             ->setSession($session)
             ->setMetaMessage($meta)
@@ -322,18 +338,27 @@ final class ChatService
     /** @return array<string,mixed> */
     public function widgetData(ChatWidget $widget): array
     {
-        return ['name' => $widget->getName(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(), 'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail(), 'require_phone' => $widget->requiresPhone()];
+        return ['name' => $widget->getName(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(), 'presentation' => $widget->getPresentation(), 'accent_color' => $widget->getAccentColor(), 'require_name' => 'required' === $widget->fieldPolicy('name'), 'require_email' => 'required' === $widget->fieldPolicy('email'), 'require_phone' => 'required' === $widget->fieldPolicy('phone')];
     }
 
-    private function contact(string $name, string $email, string $phone): ?Lead
+    private function contact(string $name, string $email, string $phone, ?string $subject, string $locale): ?Lead
     {
-        if ('' === $email && '' === $name && '' === $phone) {
+        if (null === $subject && '' === $email && '' === $name && '' === $phone) {
             return null;
         }
-        $matches = '' === $email ? [] : $this->leads->getRepository()->getLeadsByFieldValue('email', $email);
+        $bySubject = null !== $subject ? $this->leads->getRepository()->getLeadsByFieldValue('cms_external_id', $subject) : [];
+        if (count($bySubject) > 1) throw new \DomainException('identity_invalid');
+        $matches = [] !== $bySubject ? $bySubject : ('' === $email ? [] : $this->leads->getRepository()->getLeadsByFieldValue('email', $email));
+        if (null !== $subject && count($matches) > 1) throw new \DomainException('identity_invalid');
         $contact = 1 === count($matches) && $matches[0] instanceof Lead ? $matches[0] : $this->leads->getEntity();
+        if (null !== $subject && $contact instanceof Lead) {
+            $existingSubject = $contact->getFieldValue('cms_external_id');
+            if ($existingSubject && $existingSubject !== $subject) throw new \DomainException('identity_invalid');
+        }
         $parts = '' !== $name ? (preg_split('/\s+/', $name, 2) ?: []) : [];
         $fields = array_filter([
+            'cms_external_id' => $subject,
+            'preferred_locale' => null !== $subject ? Presentation::contactLocale($locale) : null,
             'firstname' => $parts[0] ?? null,
             'lastname' => $parts[1] ?? null,
             'email' => '' !== $email ? $email : null,
@@ -367,7 +392,9 @@ final class ChatService
     private function url(mixed $value): ?string
     {
         $url = mb_substr(trim((string) $value), 0, 1000);
-        return '' !== $url && preg_match('#^https?://#', $url) ? $url : null;
+        if ('' === $url || !filter_var($url, FILTER_VALIDATE_URL) || !in_array(parse_url($url, PHP_URL_SCHEME), ['http','https'], true)) return null;
+        $parts = parse_url($url);
+        return $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '').($parts['path'] ?? '/');
     }
 
     /** @return array<string,string> */

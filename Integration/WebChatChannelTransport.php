@@ -110,6 +110,9 @@ final class WebChatChannelTransport implements ChannelTransportInterface, BatchC
             'origins' => $origins,
             'realtime' => $this->tokens->issue($session->getPublicId(), 'agent'),
             'webchat' => [
+                'locale' => $session->getContext()['locale'] ?? 'pt',
+                'external_id' => $session->getContext()['subject'] ?? null,
+                'identity_verified' => null !== ($session->getContext()['subject'] ?? null),
                 'page_url' => $pageUrl,
                 'site_origin' => $session->getSiteOrigin(),
                 'referrer' => $session->getReferrer(),

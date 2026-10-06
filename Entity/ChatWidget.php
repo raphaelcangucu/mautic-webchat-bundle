@@ -13,6 +13,7 @@ use MauticPlugin\MauticMetaBundle\Entity\MetaAsset;
 class ChatWidget extends CommonEntity
 {
     private $id;
+    private ?array $presentation = null;
     private MetaAsset $asset;
     private string $name = '';
     private string $publicKey = '';
@@ -42,6 +43,7 @@ class ChatWidget extends CommonEntity
             ->addUniqueConstraint(['public_key'], 'webchat_widget_public_key')
             ->addIndex(['published'], 'webchat_widget_published');
         $b->addId();
+        $b->addNullableField('presentation', Types::JSON);
         $b->createManyToOne('asset', MetaAsset::class)->addJoinColumn('asset_id', 'id', false, false, 'CASCADE')->build();
         $b->addField('name', Types::STRING, ['length' => 120]);
         $b->addField('publicKey', Types::STRING, ['columnName' => 'public_key', 'length' => 64]);
@@ -58,6 +60,12 @@ class ChatWidget extends CommonEntity
         $b->addField('dateModified', Types::DATETIME_IMMUTABLE, ['columnName' => 'date_modified']);
     }
 
+    public function getPresentation(): array { return $this->presentation ?? []; }
+    public function setPresentation(array $v): self { $this->presentation = $v; return $this; }
+    public function fieldPolicy(string $field): string {
+        $required = match ($field) { 'name' => $this->requiresName(), 'email' => $this->requiresEmail(), 'phone' => $this->requiresPhone(), default => false };
+        return $this->getPresentation()['fields'][$field] ?? ($required ? 'required' : 'optional');
+    }
     public function getId(): ?int { return $this->id; }
     public function getAsset(): MetaAsset { return $this->asset; }
     public function setAsset(MetaAsset $v): self { $this->asset = $v; return $this->touch(); }

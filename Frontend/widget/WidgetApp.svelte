@@ -1,6 +1,13 @@
 <script lang="ts">
   import { afterUpdate, onDestroy, onMount } from "svelte";
   import { RealtimeClient } from "./realtime";
+  import {
+    resolveTheme,
+    cssVariables,
+    safeLogo,
+    type SiteContext,
+  } from "./presentation";
+  import { copy, normalizeLocale, apiError } from "./i18n";
   import type {
     Bootstrap,
     ChatMessage,
@@ -12,7 +19,58 @@
   const publicKey = root.dataset.publicKey || "";
   const initialConfig = JSON.parse(root.dataset.config || "{}") as WidgetConfig;
   let config = initialConfig;
-  $: brandName = config.name.replace(/^chat\s+/i, "").trim() || "Atendimento";
+  let context: SiteContext = {};
+  let identity: NonNullable<Bootstrap["user"]> = {};
+  let generation = 0;
+
+  let identityPending = false;
+  let accountActive = false;
+  let accountError = false;
+  $: locale = normalizeLocale(context.locale || "pt");
+  $: c = copy[locale];
+  $: theme = resolveTheme(config.presentation, context, config.accent_color);
+  $: styles = cssVariables(theme);
+  $: brandName =
+    config.presentation?.brandName ||
+    context.brandName ||
+    config.name.replace(/^chat\s+/i, "").trim() ||
+    c.support;
+  $: logo =
+    theme.options.logo === "initials"
+      ? ""
+      : safeLogo(
+          theme.options.logo === "url"
+            ? config.presentation?.logoUrl
+            : config.presentation?.logoUrl || context.logoUrl,
+        );
+  $: greeting =
+    config.presentation?.translations?.[locale]?.greeting ||
+    (locale === "pt" ? config.greeting : c.greeting);
+  $: offlineMessage =
+    config.presentation?.translations?.[locale]?.offline ||
+    (locale === "pt" ? config.offline_message : c.offline);
+  $: fields = {
+    name:
+      config.presentation?.fields?.name ||
+      (config.require_name ? "required" : "optional"),
+    email:
+      config.presentation?.fields?.email ||
+      (config.require_email ? "required" : "optional"),
+    phone:
+      config.presentation?.fields?.phone ||
+      (config.require_phone ? "required" : "optional"),
+  };
+  $: if (root) {
+    root.setAttribute("style", styles);
+    document.documentElement.lang = locale;
+  }
+  $: if (theme)
+    tellParent({
+      type: "webchat.presentation",
+      width: theme.options.width,
+      position: theme.options.position,
+      locale,
+    });
   $: brandInitial = brandName.slice(0, 1).toUpperCase();
   let bootstrap: Bootstrap | null = null;
   let parentOrigin = "*";
@@ -113,22 +171,72 @@
     if (open) setUnread(0);
     tellParent({ type: "webchat.resize", open });
     tellParent({ type: "webchat.state", open });
-    if (open) markRead();
+    if (open) {
+      markRead();
+      if (
+        !started &&
+        !identityPending &&
+        (identity.identityToken || stored().resume_session)
+      )
+        void start();
+    }
   }
 
   function toggle(): void {
     setOpen(!open);
   }
 
-  function identify(
-    user: { name?: string; email?: string; phone?: string } = {},
-  ): void {
-    if (user.name) name = String(user.name);
-    if (user.email) email = String(user.email);
-    if (user.phone) phone = String(user.phone);
+  function identify(user: NonNullable<Bootstrap["user"]> = {}): void {
+    const subject = user.subject || "";
+    if (
+      (identity.subject || "") !== subject ||
+      localStorage.getItem(`mw-subject:${publicKey}`) !== subject
+    )
+      reset(false);
+    identity = { ...user };
+    identityPending = false;
+    localStorage.setItem(`mw-subject:${publicKey}`, subject);
+    name = String(user.name || "");
+    email = String(user.email || "");
+    phone = String(user.phone || "");
+    if (bootstrap) bootstrap.user = identity;
+    if (open && !started && identity.identityToken) void start();
+    else if (started) void recoverHistory();
   }
-
-  function reset(): void {
+  function configure(
+    next: SiteContext & {
+      accountPending?: boolean;
+      accountActive?: boolean;
+      accountError?: boolean;
+    } = {},
+  ): void {
+    if (
+      next.accountActive === false &&
+      (identity.subject || localStorage.getItem(`mw-subject:${publicKey}`))
+    ) {
+      reset(false);
+      localStorage.setItem(`mw-subject:${publicKey}`, "");
+    }
+    context = { ...context, ...next };
+    if (next.accountActive !== undefined) accountActive = next.accountActive;
+    if (next.accountError !== undefined) accountError = next.accountError;
+    if (next.accountPending !== undefined)
+      identityPending = next.accountPending;
+    if (bootstrap) bootstrap.context = context;
+    if (started) void recoverHistory();
+  }
+  function reset(close = true): void {
+    generation++;
+    loading = false;
+    recovering = false;
+    identity = {};
+    identityPending = false;
+    agentTyping = false;
+    agentOnline = false;
+    connection = "connecting";
+    clearTimeout(typingTimer);
+    clearTimeout(agentTypingTimer);
+    setUnread(0);
     realtime?.close();
     realtime = null;
     session = null;
@@ -139,27 +247,55 @@
     phone = "";
     body = "";
     error = "";
-    ["session", "token", "name", "email", "phone", "visitor"].forEach((key) =>
-      localStorage.removeItem(`mw-${key}:${publicKey}`),
-    );
-    setOpen(false);
+    [
+      "session",
+      "token",
+      "name",
+      "email",
+      "phone",
+      "visitor",
+      "subject",
+    ].forEach((key) => localStorage.removeItem(`mw-${key}:${publicKey}`));
+    if (close) setOpen(false);
   }
 
   async function start(): Promise<void> {
-    if (!bootstrap || loading) return;
+    if (
+      !bootstrap ||
+      loading ||
+      identityPending ||
+      (accountActive && !identity.identityToken)
+    )
+      return;
+    const epoch = generation;
     error = "";
     const saved = stored();
     const resuming = !!saved.resume_session && !!saved.resume_token;
-    if (!resuming && config.require_name && !name.trim()) {
-      error = "Informe seu nome para continuar.";
+    if (
+      !identity.identityToken &&
+      !resuming &&
+      fields.name === "required" &&
+      !name.trim()
+    ) {
+      error = c.nameError;
       return;
     }
-    if (!resuming && config.require_email && !/^\S+@\S+\.\S+$/.test(email)) {
-      error = "Informe um e-mail válido.";
+    if (
+      !identity.identityToken &&
+      !resuming &&
+      fields.email === "required" &&
+      !/^\S+@\S+\.\S+$/.test(email)
+    ) {
+      error = c.emailError;
       return;
     }
-    if (!resuming && config.require_phone && !phone.trim()) {
-      error = "Informe seu telefone para continuar.";
+    if (
+      !identity.identityToken &&
+      !resuming &&
+      fields.phone === "required" &&
+      !phone.trim()
+    ) {
+      error = c.phoneError;
       return;
     }
     loading = true;
@@ -172,9 +308,20 @@
           body: JSON.stringify({
             ...stored(),
             visitor_id: visitorId(),
-            name: name.trim(),
-            email: email.trim(),
-            phone: phone.trim(),
+            identity_token: identity.identityToken,
+            locale,
+            name:
+              fields.name === "hidden" && !identity.identityToken
+                ? ""
+                : name.trim(),
+            email:
+              fields.email === "hidden" && !identity.identityToken
+                ? ""
+                : email.trim(),
+            phone:
+              fields.phone === "hidden" && !identity.identityToken
+                ? ""
+                : phone.trim(),
             site_origin: bootstrap.siteOrigin,
             page_url: bootstrap.pageUrl,
             referrer: bootstrap.referrer,
@@ -183,8 +330,8 @@
         },
       );
       const data = await response.json();
-      if (!response.ok)
-        throw new Error(data.error || "Não foi possível iniciar o chat.");
+      if (epoch !== generation) return;
+      if (!response.ok) throw new Error(apiError(data.code, locale));
       session = data as SessionData;
       config = session.widget;
       messages = session.messages;
@@ -192,15 +339,18 @@
       started = true;
       localStorage.setItem(`mw-session:${publicKey}`, session.session);
       localStorage.setItem(`mw-token:${publicKey}`, session.session_token);
-      localStorage.setItem(`mw-name:${publicKey}`, name);
-      localStorage.setItem(`mw-email:${publicKey}`, email);
-      localStorage.setItem(`mw-phone:${publicKey}`, phone);
+      if (!identity.subject) {
+        localStorage.setItem(`mw-name:${publicKey}`, name);
+        localStorage.setItem(`mw-email:${publicKey}`, email);
+        localStorage.setItem(`mw-phone:${publicKey}`, phone);
+      }
       connect();
       markRead();
     } catch (problem) {
-      error = problem instanceof Error ? problem.message : String(problem);
+      if (epoch === generation)
+        error = problem instanceof Error ? problem.message : c.startError;
     } finally {
-      loading = false;
+      if (epoch === generation) loading = false;
     }
   }
 
@@ -289,6 +439,7 @@
   async function recoverHistory(): Promise<void> {
     if (!bootstrap || !session || recovering) return;
     recovering = true;
+    const epoch = generation;
     const previousIncomingId = messages.reduce(
       (latest, message) =>
         message.direction === "visitor" ? latest : Math.max(latest, message.id),
@@ -303,9 +454,20 @@
           body: JSON.stringify({
             ...stored(),
             visitor_id: visitorId(),
-            name: name.trim(),
-            email: email.trim(),
-            phone: phone.trim(),
+            identity_token: identity.identityToken,
+            locale,
+            name:
+              fields.name === "hidden" && !identity.identityToken
+                ? ""
+                : name.trim(),
+            email:
+              fields.email === "hidden" && !identity.identityToken
+                ? ""
+                : email.trim(),
+            phone:
+              fields.phone === "hidden" && !identity.identityToken
+                ? ""
+                : phone.trim(),
             site_origin: bootstrap.siteOrigin,
             page_url: bootstrap.pageUrl,
             referrer: bootstrap.referrer,
@@ -315,6 +477,7 @@
       );
       if (!response.ok) return;
       const refreshed = (await response.json()) as SessionData;
+      if (epoch !== generation) return;
       const pending = messages.filter(
         (message) =>
           message.id < 0 &&
@@ -341,12 +504,13 @@
     } catch {
       // The SSE reconnect will request durable history again on reconnect.
     } finally {
-      recovering = false;
+      if (epoch === generation) recovering = false;
     }
   }
 
   async function send(): Promise<void> {
     unlockSound();
+    const epoch = generation;
     const text = body.trim();
     if (!text || !session) return;
     const clientId = uid();
@@ -376,11 +540,14 @@
         },
       );
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Falha ao enviar.");
+      if (epoch !== generation) return;
+      if (!response.ok)
+        throw new Error(apiError(data.code, locale, "sendError"));
       messages = messages.map((item) =>
         item.client_id === clientId ? data.message : item,
       );
     } catch {
+      if (epoch !== generation) return;
       messages = messages.map((item) =>
         item.client_id === clientId ? { ...item, status: "failed" } : item,
       );
@@ -404,28 +571,18 @@
     if (latest) realtime?.receipt("read", latest);
   }
   const statusText = (message: ChatMessage): string =>
-    ({
-      pending: "Enviando…",
-      sent: "Enviada",
-      delivered: "Entregue",
-      read: "Lida",
-      failed: "Falha no envio",
-    })[message.status] || message.status;
+    copy[locale][message.status] || message.status;
   const statusIcon = (message: ChatMessage): string =>
     ({ pending: "◷", sent: "✓", delivered: "✓✓", read: "✓✓", failed: "!" })[
       message.status
     ] || "";
   const time = (value: string) =>
-    new Intl.DateTimeFormat("pt-BR", {
+    new Intl.DateTimeFormat(locale, {
       hour: "2-digit",
       minute: "2-digit",
     }).format(new Date(value));
 
   onMount(() => {
-    document.documentElement.style.setProperty(
-      "--wc-accent",
-      config.accent_color || "#4e5ba6",
-    );
     const onMessage = (event: MessageEvent) => {
       if (event.source !== window.parent) return;
       if (event.data?.type === "webchat.bootstrap") {
@@ -437,10 +594,13 @@
           utm: event.data.utm || {},
           user: event.data.user || {},
           message: String(event.data.message || ""),
+          context: event.data.context || {},
         };
-        identify(bootstrap.user);
+        configure(bootstrap.context);
+        if (bootstrap.user?.identityToken || bootstrap.user?.subject)
+          identify(bootstrap.user);
         if (bootstrap.message) body = bootstrap.message;
-        if (stored().resume_session && stored().resume_token) void start();
+
         return;
       }
       if (
@@ -454,17 +614,32 @@
       } else if (event.data.action === "close") setOpen(false);
       else if (event.data.action === "toggle") toggle();
       else if (event.data.action === "identify") identify(event.data.user);
-      else if (event.data.action === "reset") reset();
+      else if (event.data.action === "configure") {
+        if (bootstrap) {
+          bootstrap.pageUrl = String(event.data.pageUrl || bootstrap.pageUrl);
+          bootstrap.utm = event.data.utm || bootstrap.utm;
+        }
+        configure(event.data.context);
+      } else if (event.data.action === "reset") reset();
     };
     const visible = () => {
       if (!document.hidden && started) void recoverHistory();
       markRead();
     };
+    const changedAccount = (event: StorageEvent) => {
+      if (
+        event.key === `mw-subject:${publicKey}` &&
+        (event.newValue || "") !== (identity.subject || "")
+      )
+        reset();
+    };
+    window.addEventListener("storage", changedAccount);
     window.addEventListener("message", onMessage);
     window.addEventListener("focus", visible);
     document.addEventListener("visibilitychange", visible);
     tellParent({ type: "webchat.ready" });
     return () => {
+      window.removeEventListener("storage", changedAccount);
       window.removeEventListener("message", onMessage);
       window.removeEventListener("focus", visible);
       document.removeEventListener("visibilitychange", visible);
@@ -486,9 +661,7 @@
   <button
     class="launcher"
     on:click={toggle}
-    aria-label={unread
-      ? `Abrir atendimento, ${unread} ${unread === 1 ? "mensagem não lida" : "mensagens não lidas"}`
-      : "Abrir atendimento"}
+    aria-label={unread ? `${c.open}, ${unread} ${c.unread}` : c.open}
   >
     <svg viewBox="0 0 24 24" aria-hidden="true"
       ><path
@@ -498,86 +671,119 @@
     {#if unread}<span class="unread">{unread > 99 ? "99+" : unread}</span>{/if}
   </button>
 {:else}
-  <section class="panel" aria-label="Atendimento online">
+  <section
+    class="panel"
+    class:filled={theme.options.header === "filled"}
+    class:minimal={theme.options.header === "minimal"}
+    class:compact={theme.options.density === "compact"}
+    aria-label={c.support}
+  >
     <header>
       <div class="brand">
-        <span class="brand-mark">{brandInitial}</span>
+        <span class="brand-mark"
+          >{#if logo}<img
+              src={logo}
+              alt=""
+              on:error={() => (logo = "")}
+            />{:else}{brandInitial}{/if}</span
+        >
         <div>
-          <strong>{config.name}</strong><small
-            ><i class:online={connection === "online"}></i>{connection ===
-            "online"
-              ? agentOnline
-                ? "Equipe online"
-                : "Conectado"
-              : connection === "connecting"
-                ? "Conectando…"
-                : "Reconectando…"}</small
+          <strong>{brandName}</strong><small
+            ><i class:online={connection === "online"}></i>{!started
+              ? c.ready
+              : connection === "online"
+                ? agentOnline
+                  ? c.online
+                  : c.connected
+                : connection === "connecting"
+                  ? c.connecting
+                  : c.reconnecting}</small
           >
         </div>
       </div>
-      <button class="close" on:click={toggle} aria-label="Minimizar chat"
-        >−</button
-      >
+      <button class="close" on:click={toggle} aria-label={c.minimize}>−</button>
     </header>
     {#if !started}
       <div class="welcome">
-        <div class="welcome-icon">{brandInitial}</div>
-        <h1>{config.greeting}</h1>
-        <p>Converse com nossa equipe sem sair desta página.</p>
-        <form on:submit|preventDefault={start}>
-          <label
-            >Nome {config.require_name ? "" : "(opcional)"}<input
-              bind:value={name}
-              autocomplete="name"
-              maxlength="120"
-              required={config.require_name}
-              placeholder="Como podemos chamar você?"
-            /></label
+        <div class="welcome-icon">
+          {#if logo}<img src={logo} alt="" />{:else}{brandInitial}{/if}
+        </div>
+        <h1>{greeting}</h1>
+        <p>{c.sub}</p>
+        {#if identity.identityToken || identityPending || accountActive}
+          <p class="account">
+            {accountError
+              ? c.identityError
+              : loading || identityPending
+                ? c.starting
+                : c.account}
+          </p>
+          {#if accountError}<button
+              class="primary"
+              on:click={() => tellParent({ type: "webchat.identity.refresh" })}
+              >{c.start}</button
+            >{/if}
+          {#if error}<div class="error" role="alert">{error}</div>
+            <button class="primary" on:click={start}>{c.start}</button>{/if}
+        {:else}
+          <form
+            class:two-columns={theme.options.formLayout === "grid"}
+            on:submit|preventDefault={start}
           >
-          <label
-            >E-mail {config.require_email ? "" : "(opcional)"}<input
-              bind:value={email}
-              type="email"
-              autocomplete="email"
-              maxlength="190"
-              required={config.require_email}
-              placeholder="voce@exemplo.com"
-            /></label
-          >
-          <label
-            >Telefone {config.require_phone ? "" : "(opcional)"}<input
-              bind:value={phone}
-              type="tel"
-              inputmode="tel"
-              autocomplete="tel"
-              maxlength="50"
-              required={config.require_phone}
-              placeholder="DDD + número ou +código do país"
-            /></label
-          >
-          {#if error}<div class="error" role="alert">{error}</div>{/if}
-          <button class="primary" type="submit" disabled={loading}
-            >{loading ? "Iniciando…" : "Começar conversa"}</button
-          >
-        </form>
-        <small class="privacy"
-          >Seus dados serão usados somente para este atendimento.</small
-        >
+            {#if fields.name !== "hidden"}<label
+                >{c.name}
+                {fields.name === "required" ? "" : `(${c.optional})`}<input
+                  bind:value={name}
+                  type="text"
+                  autocomplete="name"
+                  maxlength="120"
+                  required={fields.name === "required"}
+                  placeholder={c.namePlaceholder}
+                /></label
+              >{/if}
+            {#if fields.email !== "hidden"}<label
+                >{c.email}
+                {fields.email === "required" ? "" : `(${c.optional})`}<input
+                  bind:value={email}
+                  type="email"
+                  autocomplete="email"
+                  maxlength="190"
+                  required={fields.email === "required"}
+                  placeholder={c.emailPlaceholder}
+                /></label
+              >{/if}
+            {#if fields.phone !== "hidden"}<label
+                >{c.phone}
+                {fields.phone === "required" ? "" : `(${c.optional})`}<input
+                  bind:value={phone}
+                  type="tel"
+                  autocomplete="tel"
+                  maxlength="50"
+                  required={fields.phone === "required"}
+                  placeholder={c.phonePlaceholder}
+                /></label
+              >{/if}
+            {#if error}<div class="error" role="alert">{error}</div>{/if}
+            <button class="primary" type="submit" disabled={loading}
+              >{loading ? c.starting : c.start}</button
+            >
+          </form>{/if}
+        <small class="privacy">{c.privacy}</small>
       </div>
     {:else}
       <div class="messages" bind:this={list} aria-live="polite">
-        <div class="day">Hoje</div>
+        <div class="day">{c.today}</div>
         {#if !messages.length}<div class="greeting">
             <span class="agent-avatar">{brandInitial}</span>
             <div>
-              <strong>Equipe {brandName}</strong>
-              <p>{config.greeting}</p>
+              <strong>{c.team} {brandName}</strong>
+              <p>{greeting}</p>
             </div>
           </div>{/if}
         {#each messages as message (message.client_id)}
           <article class:mine={message.direction === "visitor"} class="message">
             {#if message.direction !== "visitor"}<small class="author"
-                >{message.author || `Equipe ${brandName}`}</small
+                >{message.author || `${c.team} ${brandName}`}</small
               >{/if}
             <div class="bubble">{message.body}</div>
             <small
@@ -591,13 +797,13 @@
         {/each}
         {#if agentTyping}<div class="typing">
             <span></span><span></span><span></span><em
-              >{agentTypingName} está digitando…</em
+              >{agentTypingName} {c.typing}</em
             >
           </div>{/if}
       </div>
       <form class="composer" on:submit|preventDefault={send}>
         {#if connection === "offline"}<div class="offline">
-            {config.offline_message}
+            {offlineMessage}
           </div>{/if}
         <textarea
           bind:value={body}
@@ -605,8 +811,8 @@
           on:blur={stopTyping}
           rows="1"
           maxlength="4000"
-          placeholder="Escreva uma mensagem"
-          aria-label="Mensagem"
+          placeholder={c.composer}
+          aria-label={c.message}
           on:focus={unlockSound}
           on:keydown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -615,10 +821,7 @@
             }
           }}
         ></textarea>
-        <button
-          type="submit"
-          disabled={!body.trim()}
-          aria-label="Enviar mensagem"
+        <button type="submit" disabled={!body.trim()} aria-label={c.send}
           ><svg viewBox="0 0 24 24"
             ><path
               d="m3 3 18 9-18 9 3.5-9L3 3Zm3.7 8h7.8L6 6.75 6.7 11Zm0 2L6 17.25 14.5 13H6.7Z"
@@ -626,7 +829,7 @@
           ></button
         >
       </form>
-      <footer>Atendimento por {brandName}</footer>
+      {#if theme.options.showFooter}<footer>{c.footer} {brandName}</footer>{/if}
     {/if}
   </section>
 {/if}
@@ -643,13 +846,8 @@
     height: 100%;
     overflow: hidden;
     background: transparent;
-    font-family:
-      Inter,
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
-    color: #202534;
+    font-family: var(--wc-font, system-ui);
+    color: var(--wc-text);
     -webkit-text-size-adjust: 100%;
   }
   .launcher {
@@ -659,9 +857,9 @@
     width: 64px;
     height: 64px;
     border: 0;
-    border-radius: 22px;
+    border-radius: var(--wc-radius);
     background: var(--wc-accent);
-    color: white;
+    color: var(--wc-button-text);
     display: grid;
     place-items: center;
     cursor: pointer;
@@ -694,7 +892,7 @@
     height: 22px;
     padding: 0 6px;
     border: 2px solid white;
-    border-radius: 11px;
+    border-radius: var(--wc-control-radius);
     background: #d63d53;
     font: 700 12px/18px system-ui;
   }
@@ -704,23 +902,19 @@
     min-height: 0;
     display: grid;
     grid-template-rows: auto 1fr auto auto;
-    border: 1px solid #dfe3ec;
-    border-radius: 22px;
-    background: #fff;
+    border: 1px solid var(--wc-divider);
+    border-radius: var(--wc-radius);
+    background: var(--wc-surface);
     overflow: hidden;
-    box-shadow: 0 24px 70px rgba(25, 34, 62, 0.2);
+    box-shadow: var(--wc-shadow);
   }
   header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 15px 16px;
-    background: linear-gradient(
-      135deg,
-      var(--wc-accent),
-      color-mix(in srgb, var(--wc-accent) 76%, #262f72)
-    );
-    color: white;
+    background: var(--wc-surface);
+    color: var(--wc-button-text);
   }
   .brand {
     display: flex;
@@ -732,7 +926,7 @@
   .agent-avatar {
     display: grid;
     place-items: center;
-    background: white;
+    background: var(--wc-surface);
     color: var(--wc-accent);
     font-weight: 800;
   }
@@ -756,7 +950,7 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #f0b44d;
+    background: var(--wc-muted);
   }
   .brand i.online {
     background: #6ce3aa;
@@ -767,13 +961,13 @@
     border: 0;
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.13);
-    color: white;
+    color: var(--wc-button-text);
     font-size: 24px;
     line-height: 1;
     cursor: pointer;
   }
   .welcome {
-    padding: 25px 24px 18px;
+    padding: var(--wc-spacing);
     overflow: auto;
   }
   .welcome-icon {
@@ -790,7 +984,7 @@
   }
   .welcome > p {
     margin: 0 0 22px;
-    color: #747b8d;
+    color: var(--wc-muted);
     font-size: 14px;
   }
   .welcome form {
@@ -800,15 +994,15 @@
   .welcome label {
     font-size: 12px;
     font-weight: 700;
-    color: #50586a;
+    color: var(--wc-muted);
   }
   .welcome input {
     width: 100%;
-    height: 43px;
+    height: var(--wc-control-height);
     margin-top: 6px;
     padding: 0 12px;
-    border: 1px solid #dce1eb;
-    border-radius: 11px;
+    border: 1px solid var(--wc-divider);
+    border-radius: var(--wc-control-radius);
     font-family: inherit;
     font-size: 16px;
     line-height: 1.35;
@@ -817,11 +1011,11 @@
     border-color: var(--wc-accent);
   }
   .primary {
-    height: 44px;
+    height: var(--wc-control-height);
     border: 0;
-    border-radius: 11px;
+    border-radius: var(--wc-control-radius);
     background: var(--wc-accent);
-    color: white;
+    color: var(--wc-button-text);
     font-weight: 700;
     cursor: pointer;
   }
@@ -831,7 +1025,7 @@
   .privacy {
     display: block;
     margin-top: 16px;
-    color: #8a91a0;
+    color: var(--wc-muted);
     text-align: center;
   }
   .error {
@@ -847,7 +1041,7 @@
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
     padding: 18px 16px;
-    background: #f7f8fb;
+    background: var(--wc-background);
     scrollbar-width: thin;
   }
   .day {
@@ -855,8 +1049,8 @@
     width: max-content;
     padding: 4px 9px;
     border-radius: 8px;
-    background: #e9ecf3;
-    color: #778093;
+    background: var(--wc-agent-bubble);
+    color: var(--wc-muted);
     font-size: 11px;
   }
   .greeting {
@@ -869,7 +1063,7 @@
     height: 29px;
     border-radius: 10px;
     background: var(--wc-accent);
-    color: white;
+    color: var(--wc-button-text);
     font-size: 11px;
     flex: none;
   }
@@ -880,7 +1074,7 @@
     margin: 4px 0 0;
     padding: 10px 12px;
     border-radius: 5px 14px 14px 14px;
-    background: white;
+    background: var(--wc-surface);
     box-shadow: 0 2px 8px rgba(34, 42, 66, 0.06);
     font-size: 14px;
   }
@@ -895,14 +1089,14 @@
   .author {
     display: block;
     margin: 0 0 4px 6px;
-    color: #687083;
+    color: var(--wc-muted);
     font-size: 11px;
   }
   .bubble {
     display: inline-block;
     padding: 10px 12px;
     border-radius: 5px 15px 15px 15px;
-    background: white;
+    background: var(--wc-surface);
     box-shadow: 0 2px 8px rgba(34, 42, 66, 0.07);
     font-size: 14px;
     line-height: 1.45;
@@ -913,12 +1107,12 @@
   .mine .bubble {
     border-radius: 15px 5px 15px 15px;
     background: var(--wc-accent);
-    color: white;
+    color: var(--wc-button-text);
   }
   .message > small:not(.author) {
     display: block;
     margin-top: 4px;
-    color: #8b92a0;
+    color: var(--wc-muted);
     font-size: 10px;
   }
   .message > small.read {
@@ -931,14 +1125,14 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    color: #81899a;
+    color: var(--wc-muted);
     font-size: 11px;
   }
   .typing span {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #9aa1af;
+    background: var(--wc-muted);
     animation: pulse 1s infinite;
   }
   .typing span:nth-child(2) {
@@ -958,8 +1152,8 @@
     min-width: 0;
     gap: 8px;
     padding: 12px;
-    border-top: 1px solid #e7e9ef;
-    background: white;
+    border-top: 1px solid var(--wc-divider);
+    background: var(--wc-surface);
   }
   .composer textarea {
     display: block;
@@ -969,8 +1163,8 @@
     min-height: 40px;
     max-height: 92px;
     padding: 10px 12px;
-    border: 1px solid #dfe3eb;
-    border-radius: 12px;
+    border: 1px solid var(--wc-divider);
+    border-radius: var(--wc-control-radius);
     font-family: inherit;
     font-size: 16px;
     line-height: 1.35;
@@ -981,9 +1175,9 @@
     width: 40px;
     height: 40px;
     border: 0;
-    border-radius: 12px;
+    border-radius: var(--wc-control-radius);
     background: var(--wc-accent);
-    color: white;
+    color: var(--wc-button-text);
     display: grid;
     place-items: center;
     cursor: pointer;
@@ -1006,9 +1200,9 @@
   footer {
     padding: 6px;
     text-align: center;
-    color: #a0a5b1;
+    color: var(--wc-muted);
     font-size: 10px;
-    background: white;
+    background: var(--wc-surface);
   }
   @keyframes pulse {
     0%,
@@ -1060,6 +1254,103 @@
     .typing span {
       transition: none;
       animation: none;
+    }
+  }
+
+  header {
+    color: var(--wc-title);
+    border-bottom: 1px solid var(--wc-divider);
+  }
+  .brand small {
+    color: var(--wc-muted);
+  }
+  .filled header {
+    background: var(--wc-accent);
+    color: var(--wc-button-text);
+  }
+  .filled .brand small {
+    color: inherit;
+  }
+  .minimal header {
+    border-top: 3px solid var(--wc-accent);
+  }
+  .close {
+    background: var(--wc-agent-bubble);
+    color: var(--wc-title);
+    width: 44px;
+    height: 44px;
+  }
+  .brand-mark {
+    background: var(--wc-agent-bubble);
+    border-radius: var(--wc-control-radius);
+  }
+  .welcome-icon {
+    background: var(--wc-agent-bubble);
+    border-radius: var(--wc-control-radius);
+  }
+  .welcome-icon img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+  }
+  .brand-mark img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .welcome input,
+  .composer textarea {
+    background: var(--wc-background);
+    color: var(--wc-text);
+    border-radius: var(--wc-control-radius);
+  }
+  .welcome h1,
+  .greeting strong {
+    color: var(--wc-title);
+  }
+  .welcome form {
+    container-type: inline-size;
+  }
+  .welcome form.two-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .welcome .primary,
+  .welcome .error {
+    grid-column: 1/-1;
+  }
+  .welcome label {
+    min-width: 0;
+  }
+  .bubble,
+  .greeting p {
+    background: var(--wc-agent-bubble);
+    color: var(--wc-text);
+  }
+  .mine .bubble {
+    color: var(--wc-button-text);
+    background: var(--wc-accent);
+  }
+  .composer {
+    grid-template-columns: 1fr 44px;
+  }
+  .composer button {
+    width: 44px;
+    height: 44px;
+  }
+  .panel {
+    container-type: inline-size;
+  }
+  @container (max-width:410px) {
+    .welcome form.two-columns {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation: none !important;
+      transition: none !important;
     }
   }
 </style>
