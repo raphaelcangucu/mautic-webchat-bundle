@@ -8,7 +8,7 @@
     type SiteContext,
   } from "./presentation";
   import { copy, normalizeLocale, apiError } from "./i18n";
-  import { identityScopeChanged } from "./identityScope";
+  import { canUpgradeVisitor, identityScopeChanged } from "./identityScope";
   import type {
     Bootstrap,
     ChatMessage,
@@ -196,7 +196,15 @@
         subject,
       )
     )
-      reset(false);
+      reset(
+        false,
+        !!user.identityToken &&
+          canUpgradeVisitor(
+            identity.subject,
+            localStorage.getItem(`mw-subject:${publicKey}`),
+            subject,
+          ),
+      );
     identity = { ...user };
     identityPending = false;
     localStorage.setItem(`mw-subject:${publicKey}`, subject);
@@ -229,7 +237,7 @@
     if (bootstrap) bootstrap.context = context;
     if (started) void tick().then(recoverHistory);
   }
-  function reset(close = true): void {
+  function reset(close = true, preserveVisitorResume = false): void {
     generation++;
     loading = false;
     recovering = false;
@@ -259,7 +267,14 @@
       "phone",
       "visitor",
       "subject",
-    ].forEach((key) => localStorage.removeItem(`mw-${key}:${publicKey}`));
+    ].forEach((key) => {
+      if (
+        preserveVisitorResume &&
+        ["session", "token", "visitor"].includes(key)
+      )
+        return;
+      localStorage.removeItem(`mw-${key}:${publicKey}`);
+    });
     if (close) setOpen(false);
   }
 
@@ -499,6 +514,8 @@
         0,
       );
       session = refreshed;
+      localStorage.setItem(`mw-session:${publicKey}`, refreshed.session);
+      localStorage.setItem(`mw-token:${publicKey}`, refreshed.session_token);
       config = refreshed.widget;
       messages = [...refreshed.messages, ...pending];
       realtime?.updateSession(refreshed);

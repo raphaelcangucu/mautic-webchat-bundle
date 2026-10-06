@@ -85,7 +85,36 @@ class ChatSession extends CommonEntity
     public function getPublicId(): string { return $this->publicId; }
     public function getTokenHash(): string { return $this->tokenHash; }
     public function setToken(string $plain): self { $this->tokenHash = hash('sha256', $plain); return $this; }
-    public function tokenMatches(string $plain): bool { return '' !== $plain && hash_equals($this->tokenHash, hash('sha256', $plain)); }
+    public function tokenMatches(string $plain): bool
+    {
+        if ('' === $plain) return false;
+        $hash = hash('sha256', $plain);
+        if (hash_equals($this->tokenHash, $hash)) return true;
+        foreach ($this->getContext()['browser_grants'] ?? [] as $grant) {
+            if (is_array($grant) && ($grant['expires'] ?? 0) > time() && hash_equals((string) ($grant['hash'] ?? ''), $hash)) return true;
+        }
+        return false;
+    }
+    /** Give another verified browser access without disconnecting existing browsers. */
+    public function authorizeBrowser(string $visitor, string $plain): self
+    {
+        $context = $this->getContext();
+        $grants = array_filter($context['browser_grants'] ?? [], static fn ($g) => is_array($g) && ($g['expires'] ?? 0) > time());
+        $key = hash('sha256', $visitor);
+        unset($grants[$key]);
+        $grants[$key] = ['hash' => hash('sha256', $plain), 'expires' => time() + 30 * 86400];
+        $context['browser_grants'] = array_slice($grants, -20, null, true);
+        return $this->setContext($context);
+    }
+    /** Promotion revokes the anonymous resume credential and its realtime topic. */
+    public function promoteIdentity(string $plain): self
+    {
+        $this->publicId = bin2hex(random_bytes(16));
+        $context = $this->getContext();
+        unset($context['browser_grants']);
+        $this->setToken($plain);
+        return $this->setContext($context);
+    }
     public function getVisitorId(): string { return $this->visitorId; }
     public function setVisitorId(string $v): self { $this->visitorId = trim($v); return $this; }
     public function getVisitorName(): ?string { return $this->visitorName; }

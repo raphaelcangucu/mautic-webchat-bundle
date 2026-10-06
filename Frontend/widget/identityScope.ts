@@ -7,3 +7,11 @@ export function identityScopeChanged(
 ): boolean {
   return (currentSubject ?? storedSubject ?? "") !== nextSubject;
 }
+
+export function canUpgradeVisitor(
+  currentSubject: string | undefined,
+  storedSubject: string | null,
+  nextSubject: string,
+): boolean {
+  return (currentSubject ?? storedSubject ?? "") === "" && nextSubject !== "";
+}
