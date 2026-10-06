@@ -68,12 +68,15 @@ final class ChatService
         $plainToken = trim((string) ($input['resume_token'] ?? ''));
         $publicId = trim((string) ($input['resume_session'] ?? ''));
         $session = '' !== $publicId ? $this->sessions->findOneBy(['publicId' => $publicId, 'widget' => $widget]) : null;
-        if (!$session instanceof ChatSession || !$session->tokenMatches($plainToken) || 'open' !== $session->getStatus() || $session->getSiteOrigin() !== $origin || ($session->getContext()['subject'] ?? null) !== ($verified['sub'] ?? null)) {
+        $upgrading = $session instanceof ChatSession && null !== $verified
+            && null === ($session->getContext()['subject'] ?? null) && $session->getVisitorId() === $visitorId;
+        if (!$session instanceof ChatSession || !$session->tokenMatches($plainToken) || 'open' !== $session->getStatus() || $session->getSiteOrigin() !== $origin || (!$upgrading && ($session->getContext()['subject'] ?? null) !== ($verified['sub'] ?? null))) {
             $session = null;
+            $upgrading = false;
             $plainToken = bin2hex(random_bytes(32));
         }
         // An authenticated existing session survives later changes to required fields.
-        if ($session instanceof ChatSession) {
+        if ($session instanceof ChatSession && !$upgrading) {
             $name = '' !== $name ? $name : ($session->getVisitorName() ?? '');
             $email = '' !== $email ? $email : ($session->getVisitorEmail() ?? '');
             $phone = '' !== $phone ? $phone : ($session->getVisitorPhone() ?? '');
@@ -102,8 +105,18 @@ final class ChatService
                 $phone = ''; // An account without a usable phone still has a signed stable ID.
             }
         }
-        $contact = $session instanceof ChatSession && $session->getVisitorName() === ('' === $name ? null : $name) && $session->getVisitorEmail() === ('' === $email ? null : $email) && $session->getVisitorPhone() === ('' === $phone ? null : $phone)
-            ? $session->getContact() : $this->contact($name, $email, $phone, $verified['sub'] ?? null, $locale);
+        $accountContact = null !== $verified ? $this->contact($name, $email, $phone, $verified['sub'], $locale) : null;
+        if (!$session instanceof ChatSession && $accountContact instanceof Lead) {
+            $session = $this->sessions->latestForIdentity($widget, $accountContact, $origin, $verified['sub']);
+            if ($session instanceof ChatSession) $session->authorizeBrowser($visitorId, $plainToken);
+        }
+        if ($upgrading) {
+            $plainToken = bin2hex(random_bytes(32));
+            $session->promoteIdentity($plainToken);
+            $session->getConversation()->setRecipient('webchat:'.$session->getPublicId());
+        }
+        $contact = $accountContact ?? ($session instanceof ChatSession && $session->getVisitorName() === ('' === $name ? null : $name) && $session->getVisitorEmail() === ('' === $email ? null : $email) && $session->getVisitorPhone() === ('' === $phone ? null : $phone)
+            ? $session->getContact() : $this->contact($name, $email, $phone, null, $locale));
         if (!$session instanceof ChatSession) {
             $conversation = (new MetaConversation())
                 ->setAsset($widget->getAsset())
