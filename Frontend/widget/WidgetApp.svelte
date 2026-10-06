@@ -937,13 +937,16 @@
     font: 700 12px/18px system-ui;
   }
   .panel {
+    --wc-panel-radius: var(--wc-radius);
     width: 100%;
     height: 100%;
     min-height: 0;
     display: grid;
     grid-template-rows: auto 1fr auto auto;
     border: 1px solid var(--wc-divider);
-    border-radius: var(--wc-radius);
+    border-radius: var(--wc-panel-radius);
+    /* The panel fills the iframe: keep its shadow out of transparent corners. */
+    clip-path: inset(0 round var(--wc-panel-radius));
     background: var(--wc-surface);
     overflow: hidden;
     box-shadow: var(--wc-shadow);
@@ -1274,7 +1277,7 @@
   }
   @media (max-width: 520px) {
     .panel {
-      border-radius: 16px;
+      --wc-panel-radius: 16px;
     }
     .welcome {
       padding: 22px 20px;
