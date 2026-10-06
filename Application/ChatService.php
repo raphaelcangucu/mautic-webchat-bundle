@@ -126,7 +126,7 @@ final class ChatService
             $session->getConversation()->setContact($contact);
         }
         if (null !== $verified && $session->getId() && $contact instanceof Lead && ($session->getContext()['locale'] ?? null) !== $locale) {
-            $this->leads->setFieldValues($contact, ['preferred_locale' => $locale], true);
+            $this->leads->setFieldValues($contact, ['preferred_locale' => Presentation::contactLocale($locale)], true);
             $this->leads->saveEntity($contact);
         }
         $session->setContext(['locale' => $locale, 'subject' => $verified['sub'] ?? null]);
@@ -358,7 +358,7 @@ final class ChatService
         $parts = '' !== $name ? (preg_split('/\s+/', $name, 2) ?: []) : [];
         $fields = array_filter([
             'cms_external_id' => $subject,
-            'preferred_locale' => null !== $subject ? $locale : null,
+            'preferred_locale' => null !== $subject ? Presentation::contactLocale($locale) : null,
             'firstname' => $parts[0] ?? null,
             'lastname' => $parts[1] ?? null,
             'email' => '' !== $email ? $email : null,

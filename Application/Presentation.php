@@ -7,6 +7,15 @@ namespace MauticPlugin\MauticWebChatBundle\Application;
 /** Versioned, allowlisted configuration; never accepts HTML, CSS or script URLs. */
 final class Presentation
 {
+    public static function contactLocale(string $locale): string
+    {
+        return match ($locale) {
+            'en' => 'en_US',
+            'es' => 'es_ES',
+            default => 'pt_BR',
+        };
+    }
+
     public static function sanitize(mixed $input): array
     {
         if (!is_array($input)) {

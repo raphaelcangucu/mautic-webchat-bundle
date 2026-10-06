@@ -11,6 +11,7 @@ check(!isset($p['overrides']['macro']['options']['font']),'font allowlist');
 check($p['overrides']['macro']['dark']['primary']==='#16A34A','valid color');
 check(!isset($p['overrides']['macro']['dark']['surface']),'invalid CSS dropped');
 check($p['fields']['phone']==='hidden','visibility');
+check(Presentation::contactLocale('pt')==='pt_BR' && Presentation::contactLocale('en')==='en_US' && Presentation::contactLocale('es')==='es_ES','Mautic contact locales');
 $key=openssl_pkey_new(['private_key_bits'=>2048,'private_key_type'=>OPENSSL_KEYTYPE_RSA]);
 $public=openssl_pkey_get_details($key)['key'];
 $encode=fn($v)=>rtrim(strtr(base64_encode(json_encode($v)), '+/', '-_'),'=');
