@@ -73,6 +73,10 @@ final class AdminController extends CommonController
         if ('' !== $agentKey && !$ai->get('agent', $agentKey)) {
             return new JsonResponse(['error' => 'O agente selecionado não existe.'], 422);
         }
+        if (array_key_exists('presentation', $input)) {
+            try { $widget->setPresentation(\MauticPlugin\MauticWebChatBundle\Application\Presentation::sanitize($input['presentation'])); }
+            catch (\DomainException $e) { return new JsonResponse(['error' => $e->getMessage()], 422); }
+        }
         $widget->setName($name)->setAsset($asset)->setPublished(!empty($input['published']))->setAllowedDomains($domains)
             ->setGreeting(mb_substr(trim((string) ($input['greeting'] ?? 'Olá! Como podemos ajudar?')), 0, 500))
             ->setOfflineMessage(mb_substr(trim((string) ($input['offline_message'] ?? 'Deixe sua mensagem e responderemos assim que possível.')), 0, 500))
@@ -110,6 +114,7 @@ final class AdminController extends CommonController
         return [
             'id' => (int) $widget->getId(), 'name' => $widget->getName(), 'public_key' => $widget->getPublicKey(), 'published' => $widget->isPublished(),
             'allowed_domains' => $widget->getAllowedDomains(), 'greeting' => $widget->getGreeting(), 'offline_message' => $widget->getOfflineMessage(),
+            'presentation' => $widget->getPresentation(),
             'accent_color' => $widget->getAccentColor(), 'require_name' => $widget->requiresName(), 'require_email' => $widget->requiresEmail(), 'require_phone' => $widget->requiresPhone(),
             'ai_agent_key' => $widget->getAiAgentKey(), 'asset_id' => (int) $widget->getAsset()->getId(), 'asset_name' => $widget->getAsset()->getName(),
             'embed' => '<script async src="'.$loader.'"></script>',

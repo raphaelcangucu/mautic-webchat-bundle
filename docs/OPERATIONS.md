@@ -64,3 +64,26 @@ O histórico usa uma projeção escalar de no máximo 100 mensagens. Marcadores 
 - Mensagem duplicada: confira o `client_id`; o banco conserva a restrição de unicidade.
 - CPU alta: compare a taxa de POSTs, FPM ativo e health do broker. Recibos de leitura não podem se repetir para o mesmo ID.
 - Rollback: pare SSE/timer, restaure código/configuração previamente salvos e recarregue serviços. Preserve o histórico e os índices; não remova tabelas como parte do rollback.
+
+
+## Temas, idioma e identidade do CMS (v1.3)
+
+A apresentação é JSON versionado em `webchat_widgets.presentation`; valores nulos mantêm Clássico e a cor existente. Contexto da sessão (`locale` e `subject`) fica em `webchat_sessions.context`. Faça e verifique backup novo antes de acrescentar somente as colunas ausentes:
+
+```sql
+ALTER TABLE webchat_widgets ADD COLUMN presentation JSON DEFAULT NULL;
+ALTER TABLE webchat_sessions ADD COLUMN context JSON DEFAULT NULL;
+```
+
+Não execute schema update geral nem testes de kernel contra produção. Preserve essas colunas no rollback; restaure código/configuração, sem apagar conversas.
+
+O CMS mantém uma chave RSA exclusiva, criptografada em `mauticWebChatIdentity.private_key`, fora do formulário de configurações e do whitelabel público. Publique o CMS e execute sua migração normal antes de habilitar a ponte autenticada. Consulte apenas `webChatIdentityPublicKey`, confira o emissor e fixe a chave pública no servidor Mautic, nunca a chave privada:
+
+- `MAUTIC_WEBCHAT_IDENTITY_ISSUER=https://acp.macro.markets`
+- `MAUTIC_WEBCHAT_IDENTITY_PUBLIC_KEY=...PEM público...` (quebras como `\n` aceitas)
+
+Sem esses valores, identidade autenticada falha de forma fechada; visitantes continuam usando o formulário. Não use o segredo de SSE como chave de identidade. O token RS256 dura cinco minutos, contém origem, widget e ID com namespace. O frontend renova o token, não o persiste no armazenamento e ignora respostas de contas anteriores. Somente e-mail validado no CMS pode completar vínculo por e-mail. Retomada requer token de chat, mesma origem e mesmo sujeito.
+
+Crie no Mautic o campo de contato `cms_external_id` (texto, publicado, sem atualização pública). O site manda apenas idioma, marca, logo HTTPS e paletas semânticas; o editor pode sobrescrever cada propriedade por tema/versão. `configure` preserva rascunho e histórico. `reset` limpa identidade e conversa; mudança de conta também limpa abas que compartilham armazenamento.
+
+Valide PT/EN/ES, claro/escuro, desktop/celular, cada tema e salvamento/reabertura. Faça validação com conta de teste autorizada para conferir ID externo, vínculo ao contato e ausência do formulário. Uma identidade autodeclarada ou uma prévia visual não prova essa validação.
