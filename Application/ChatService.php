@@ -356,9 +356,10 @@ final class ChatService
         if (null === $subject && '' === $email && '' === $name && '' === $phone) {
             return null;
         }
-        $bySubject = null !== $subject ? $this->leads->getRepository()->getLeadsByFieldValue('cms_external_id', $subject) : [];
+        // Mautic indexes repository results by contact ID, not by position.
+        $bySubject = null !== $subject ? array_values($this->leads->getRepository()->getLeadsByFieldValue('cms_external_id', $subject)) : [];
         if (count($bySubject) > 1) throw new \DomainException('identity_invalid');
-        $matches = [] !== $bySubject ? $bySubject : ('' === $email ? [] : $this->leads->getRepository()->getLeadsByFieldValue('email', $email));
+        $matches = [] !== $bySubject ? $bySubject : ('' === $email ? [] : array_values($this->leads->getRepository()->getLeadsByFieldValue('email', $email)));
         if (null !== $subject && count($matches) > 1) throw new \DomainException('identity_invalid');
         $contact = 1 === count($matches) && $matches[0] instanceof Lead ? $matches[0] : $this->leads->getEntity();
         if (null !== $subject && $contact instanceof Lead) {
