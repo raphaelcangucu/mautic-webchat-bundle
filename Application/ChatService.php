@@ -129,11 +129,14 @@ final class ChatService
             $this->leads->setFieldValues($contact, ['preferred_locale' => Presentation::contactLocale($locale)], true);
             $this->leads->saveEntity($contact);
         }
-        $session->setContext(['locale' => $locale, 'subject' => $verified['sub'] ?? null]);
+        $page = PageContext::sanitize($input, $origin);
+        $session->setContext(array_replace($session->getContext(), ['locale' => $locale, 'subject' => $verified['sub'] ?? null], array_intersect_key($page, ['page_title' => true])));
+        if (isset($page['page_url'])) {
+            $session->setPageUrl($page['page_url']);
+        }
         $session->setVisitorName('' === $name ? null : $name)
             ->setVisitorEmail('' === $email ? null : $email)
             ->setVisitorPhone('' === $phone ? null : $phone)
-            ->setPageUrl($this->url($input['page_url'] ?? null))
             ->setReferrer($this->url($input['referrer'] ?? null))
             ->setUtm(array_replace($session->getUtm(), $this->utm($input['utm'] ?? [])))
             ->seen();
@@ -167,7 +170,7 @@ final class ChatService
         return $this->messages->timeline($session);
     }
 
-    public function receiveVisitor(ChatSession $session, string $body, string $clientId): ChatMessage
+    public function receiveVisitor(ChatSession $session, string $body, string $clientId, array $pageInput = []): ChatMessage
     {
         $body = $this->body($body);
         $clientId = $this->clientId($clientId);
@@ -179,6 +182,13 @@ final class ChatService
             return $existing;
         }
 
+        $page = PageContext::sanitize($pageInput, $session->getSiteOrigin());
+        if (isset($page['page_url'])) {
+            $session->setPageUrl($page['page_url']);
+            // Clear a previous page's title when the caller has no title yet.
+            $session->setContext(array_replace($session->getContext(), ['page_title' => $page['page_title'] ?? '']));
+        }
+        $session->setContext(array_replace($session->getContext(), array_intersect_key($page, ['locale' => true])));
         $conversation = $session->getConversation();
         $now = new \DateTimeImmutable();
         $profile = array_filter(['name' => $session->getVisitorName(), 'email' => $session->getVisitorEmail(), 'phone' => $session->getVisitorPhone()]);
@@ -192,7 +202,7 @@ final class ChatService
             ->setMessageType('text')
             ->setRecipient($conversation->getRecipient())
             ->setStatus('received')
-            ->setPayload(['text' => $body, 'contact' => ['profile' => $profile], 'webchat' => ['page_url' => $session->getPageUrl(), 'origin' => $session->getSiteOrigin(), 'locale' => $session->getContext()['locale'] ?? 'pt', 'external_id' => $session->getContext()['subject'] ?? null]]);
+            ->setPayload(['text' => $body, 'contact' => ['profile' => $profile], 'webchat' => ['page_url' => $session->getPageUrl(), 'page_title' => $session->getContext()['page_title'] ?? '', 'origin' => $session->getSiteOrigin(), 'locale' => $session->getContext()['locale'] ?? 'pt', 'external_id' => $session->getContext()['subject'] ?? null]]);
         $message = (new ChatMessage())
             ->setSession($session)
             ->setMetaMessage($meta)

@@ -109,10 +109,13 @@ test("command acknowledgement confirms a message even when its SSE delivery is m
   });
   const originalFetch = globalThis.fetch;
   const events: Record<string, unknown>[] = [];
-  globalThis.fetch = async () =>
-    new Response(
+  let payload: Record<string, unknown> = {};
+  globalThis.fetch = async (_url, init) => {
+    payload = JSON.parse(String(init?.body));
+    return new Response(
       JSON.stringify({ ok: true, message: { ...reply, direction: "visitor" } }),
     );
+  };
   try {
     const client = new RealtimeClient(session, {
       event: (e) => events.push(e),
@@ -120,9 +123,19 @@ test("command acknowledgement confirms a message even when its SSE delivery is m
     });
     client.connect();
     FakeEventSource.instances.at(-1)!.onopen?.();
-    assert.equal(client.sendMessage("Relatório", "msg_1234567890123456"), true);
+    assert.equal(
+      client.sendMessage("Relatório", "msg_1234567890123456", {
+        page_url: "https://site.example/market/nfl",
+        page_title: "Bears vs Packers",
+        locale: "en",
+      }),
+      true,
+    );
     await tick();
     assert.equal(events[0].type, "message.created");
+    assert.equal(payload.page_url, "https://site.example/market/nfl");
+    assert.equal(payload.page_title, "Bears vs Packers");
+    assert.equal(payload.locale, "en");
     client.close();
   } finally {
     globalThis.fetch = originalFetch;

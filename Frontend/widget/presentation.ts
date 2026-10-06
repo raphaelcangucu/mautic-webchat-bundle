@@ -6,6 +6,7 @@ export interface Options {
   header: "filled" | "surface" | "minimal";
   logo: "site" | "initials" | "url";
   font: "site" | "system" | "arial" | "georgia";
+  fontSize: number;
   density: "comfortable" | "compact";
   radius: number;
   controlRadius: number;
@@ -50,6 +51,7 @@ export interface Presentation {
 }
 export interface SiteContext {
   locale?: string;
+  fontFamily?: string;
   appearance?: Variant;
   brandName?: string;
   logoUrl?: string;
@@ -66,6 +68,7 @@ export const themes: Record<
     header: "filled",
     logo: "initials",
     font: "site",
+    fontSize: 16,
     density: "comfortable",
     radius: 16,
     controlRadius: 10,
@@ -105,6 +108,7 @@ export const themes: Record<
     header: "surface",
     logo: "site",
     font: "site",
+    fontSize: 14,
     density: "comfortable",
     radius: 12,
     controlRadius: 6,
@@ -144,6 +148,7 @@ export const themes: Record<
     header: "minimal",
     logo: "site",
     font: "system",
+    fontSize: 14,
     density: "compact",
     radius: 10,
     controlRadius: 6,
@@ -209,6 +214,10 @@ export function resolveTheme(
   const base = themes[id];
   const saved = p.overrides?.[id] || {};
   const options = { ...base, ...saved.options };
+  options.fontSize = Math.min(
+    18,
+    Math.max(12, Number(options.fontSize) || base.fontSize),
+  );
   const variant: Variant =
     options.appearance === "auto"
       ? site.appearance === "dark"
@@ -227,7 +236,14 @@ export function resolveTheme(
   if (id === "macro")
     Object.assign(palette, safePalette(site.palettes?.[variant]));
   Object.assign(palette, safePalette(saved[variant]));
-  return { id, options, variant, colors: palette };
+  const fontFamily =
+    options.font === "site" && safeFont(site.fontFamily)
+      ? site.fontFamily!
+      : fonts[options.font];
+  return { id, options, variant, colors: palette, fontFamily };
+}
+export function safeFont(value?: string): boolean {
+  return typeof value === "string" && /^[a-z0-9\s,'"._-]{1,240}$/i.test(value);
 }
 export function safePalette(input?: Partial<Palette>): Partial<Palette> {
   return Object.fromEntries(
@@ -268,7 +284,9 @@ export function cssVariables(theme: ReturnType<typeof resolveTheme>): string {
     radius: `${o.radius}px`,
     "control-radius": `${o.controlRadius}px`,
     "control-height": `${Math.max(44, o.controlHeight)}px`,
-    font: fonts[o.font],
+    font: theme.fontFamily,
+    "font-size": `${o.fontSize}px`,
+    "heading-size": `${o.fontSize + (theme.id === "classic" ? 5 : 4)}px`,
     spacing: o.density === "compact" ? "16px" : "24px",
     shadow: shadows[o.shadow],
   };

@@ -43,7 +43,7 @@ final class RealtimeController extends CommonController
             }
             $role = $claims['role'];
             if ('message.send' === $type && 'visitor' === $role) {
-                $message = $chat->receiveVisitor($session, (string) ($input['body'] ?? ''), (string) ($input['client_id'] ?? ''));
+                $message = $chat->receiveVisitor($session, (string) ($input['body'] ?? ''), (string) ($input['client_id'] ?? ''), $input);
                 return new JsonResponse(['ok' => true, 'message' => $chat->messageData($message)]);
             }
             if (in_array($type, ['message.delivered', 'message.read'], true)) {

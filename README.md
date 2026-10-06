@@ -23,6 +23,10 @@ Canal de chat incorporável para o [Mautic Omnichannel Inbox](https://github.com
 
 ## Identidade por widget
 
+O embed detecta o idioma de `html.lang`, o tema claro/escuro e a família de fonte do site. Mudanças de idioma, título e rota em aplicações SPA atualizam o mesmo chat. Configurações explícitas por `MauticWebChat.configure(...)` e ajustes visuais salvos no painel têm prioridade. Macro Markets e Essencial usam texto de 14px por padrão; **Tamanho do texto** permite ajustar cada tema entre 12 e 18px. Campos em telas touch mantêm pelo menos 16px para evitar zoom ao digitar.
+
+Cada mensagem carrega o idioma, a URL atual sem parâmetros e o título da página. O servidor aceita contexto de página apenas da origem da sessão e mantém a identidade assinada separada desses metadados. O Inbox e a IA podem usar o mercado/artigo atual como referência; a página não concede acesso a contas nem amplia as ferramentas disponíveis.
+
 Em **Web Chat**, cada widget tem nome, cor de destaque, saudação e conta do Inbox próprios. A inicial, a identificação da equipe e o rodapé acompanham o nome configurado, inclusive na prévia do editor. Por exemplo, **Chat Codificar** usa a inicial **C** e pode ter a cor verde `#168354` sem alterar o widget da Macro Markets.
 
 O formulário inicial pede **nome, e-mail e telefone**. As opções **Pedir nome**, **Pedir e-mail** e **Pedir telefone** tornam cada campo obrigatório para novas conversas. O telefone aceita DDD no país configurado na conta ou um número internacional com `+`, é validado no servidor e salvo em E.164 no campo **Mobile** do contato Mautic e na sessão do chat. Informar telefone não registra consentimento para WhatsApp. Sessões já autenticadas continuam podendo retomar o histórico após alterações de obrigatoriedade.

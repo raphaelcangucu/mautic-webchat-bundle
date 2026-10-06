@@ -78,12 +78,19 @@ export class RealtimeClient {
       this.typingAt = Date.now();
     }
   }
-  sendMessage(body: string, clientId: string): boolean {
+  sendMessage(
+    body: string,
+    clientId: string,
+    page: { page_url?: string; page_title?: string; locale?: string } = {},
+  ): boolean {
     return this.send({
       type: "message.send",
       body,
       client_id: clientId,
       request_id: clientId,
+      page_url: page.page_url,
+      page_title: page.page_title,
+      locale: page.locale,
     });
   }
   receipt(kind: "delivered" | "read", message: ChatMessage): void {

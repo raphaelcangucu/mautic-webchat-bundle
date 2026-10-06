@@ -3,6 +3,7 @@ export const normalizeLocale = (value?: string): Locale =>
   value?.startsWith("pt") ? "pt" : value?.startsWith("es") ? "es" : "en";
 const pt = {
   support: "Atendimento",
+  currentPage: "Nesta página:",
   open: "Abrir atendimento",
   unread: "mensagens não lidas",
   minimize: "Minimizar chat",
@@ -47,6 +48,7 @@ const pt = {
 };
 const en: typeof pt = {
   support: "Support",
+  currentPage: "On this page:",
   open: "Open support",
   unread: "unread messages",
   minimize: "Minimize chat",
@@ -90,6 +92,7 @@ const en: typeof pt = {
 };
 const es: typeof pt = {
   support: "Atención",
+  currentPage: "En esta página:",
   open: "Abrir atención",
   unread: "mensajes sin leer",
   minimize: "Minimizar chat",
