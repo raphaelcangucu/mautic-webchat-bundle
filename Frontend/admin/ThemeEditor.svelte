@@ -156,7 +156,7 @@
               aria-label={`${colorLabels[key]} em hexadecimal`}
               maxlength="7"
               value={preview.colors[key]}
-              on:change={(e) => color(key, e.currentTarget.value)}
+              on:input={(e) => color(key, e.currentTarget.value)}
             /><button
               type="button"
               title={`Restaurar ${colorLabels[key]}`}
