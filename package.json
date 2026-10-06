@@ -6,7 +6,7 @@
     "build": "vite build --config vite.admin.config.ts && vite build --config vite.widget.config.ts",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "format:check": "prettier --plugin=prettier-plugin-svelte --check \"Frontend/**/*.{ts,svelte}\" \"Tests/JavaScript/*.{ts,mjs}\"",
-    "test": "npm run check && npm run build && tsx --test Tests/JavaScript/*.test.ts && php Tests/PHP/presentation-identity.php && php Realtime/tests/unit.php && tsx --test Realtime/tests/*.test.ts"
+    "test": "npm run check && npm run build && tsx --test Tests/JavaScript/*.test.ts && php Tests/PHP/presentation-identity.php && php Tests/PHP/contact-reuse.php && php Realtime/tests/unit.php && tsx --test Realtime/tests/*.test.ts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.0",
