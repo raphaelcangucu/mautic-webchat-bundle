@@ -150,3 +150,36 @@ test("command acknowledgement confirms a message even when its SSE delivery is m
     globalThis.fetch = originalFetch;
   }
 });
+
+test("expired credentials never open a stream, and callbacks from a closed stream are ignored", () => {
+  Object.assign(globalThis, {
+    EventSource: FakeEventSource,
+    window: globalThis,
+  });
+  const events: Record<string, unknown>[] = [];
+  const statuses: string[] = [];
+  const expired = {
+    ...session,
+    realtime: { ...session.realtime, expires_at: "2020-01-01T00:00:00Z" },
+  };
+  const client = new RealtimeClient(expired, {
+    event: (e) => events.push(e),
+    status: (s) => statuses.push(s),
+  });
+  const before = FakeEventSource.instances.length;
+  client.connect();
+  assert.equal(FakeEventSource.instances.length, before);
+  assert.deepEqual(events, [{ type: "auth.expired" }]);
+  assert.deepEqual(statuses, ["offline"]);
+  client.updateSession(session);
+  client.connect();
+  const old = FakeEventSource.instances.at(-1)!;
+  client.connect();
+  old.onopen?.();
+  old.onerror?.();
+  old.onmessage?.({ data: '{"type":"auth.expired"}' });
+  assert.equal(events.length, 1);
+  assert.equal(statuses.at(-1), "connecting");
+  assert.equal(FakeEventSource.instances.at(-1)!.closed, false);
+  client.close();
+});
