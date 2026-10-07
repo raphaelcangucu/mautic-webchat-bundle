@@ -97,6 +97,9 @@
   let list: HTMLDivElement;
   let typingTimer = 0;
   let recovering = false;
+  let reconnectNeeded = false;
+  let recoveryTimer = 0;
+  let recoveryFailures = 0;
   let audioContext: AudioContext | null = null;
 
   const stored = () => ({
@@ -116,6 +119,12 @@
   };
   const tellParent = (message: Record<string, unknown>) =>
     window.parent.postMessage(message, parentOrigin);
+  $: if (bootstrap)
+    tellParent({
+      type: "webchat.draft",
+      value: body.slice(0, 4000),
+      subject: identity.subject || "",
+    });
 
   function setUnread(value: number): void {
     unread = Math.max(0, value);
@@ -262,6 +271,9 @@
     generation++;
     loading = false;
     recovering = false;
+    reconnectNeeded = false;
+    recoveryFailures = 0;
+    clearTimeout(recoveryTimer);
     identity = {};
     identityPending = false;
     agentTyping = false;
@@ -423,16 +435,21 @@
 
   function connect(): void {
     if (!session) return;
+    const epoch = generation;
     realtime?.close();
     realtime = new RealtimeClient(session, {
       status(value) {
+        if (epoch !== generation) return;
         connection = value;
         if (value !== "online") agentTyping = false;
         if (value === "online") void recoverHistory();
       },
       event(event) {
+        if (epoch !== generation) return;
         if (event.type === "auth.expired") {
-          void recoverHistory().then(() => realtime?.connect());
+          reconnectNeeded = true;
+          connection = "offline";
+          void recoverHistory();
         } else if (event.type === "sync.required") {
           void recoverHistory();
         } else if (event.type === "message.created" && event.message) {
@@ -504,9 +521,11 @@
   }
 
   async function recoverHistory(): Promise<void> {
-    if (!bootstrap || !session || recovering) return;
+    if (!bootstrap || !session || recovering || identityPending) return;
+    clearTimeout(recoveryTimer);
     recovering = true;
     const epoch = generation;
+    const requestRevision = identityRevision;
     const previousIncomingId = messages.reduce(
       (latest, message) =>
         message.direction === "visitor" ? latest : Math.max(latest, message.id),
@@ -541,9 +560,23 @@
             referrer: bootstrap.referrer,
             utm: bootstrap.utm,
           }),
+          signal: AbortSignal.timeout(10000),
         },
       );
-      if (!response.ok) return;
+      if (epoch !== generation) return;
+      if (!response.ok) {
+        const rejected = await response.json();
+        if (
+          rejected.code === "identity_invalid" &&
+          requestRevision === identityRevision &&
+          accountActive &&
+          !identityRetried
+        ) {
+          identityRetried = true;
+          requestIdentityRefresh();
+        }
+        throw new Error("Session recovery failed");
+      }
       const refreshed = (await response.json()) as SessionData;
       if (epoch !== generation) return;
       const pending = messages.filter(
@@ -566,15 +599,32 @@
       config = refreshed.widget;
       messages = [...refreshed.messages, ...pending];
       realtime?.updateSession(refreshed);
+      identityRetried = false;
+      recoveryFailures = 0;
+      if (reconnectNeeded) {
+        reconnectNeeded = false;
+        realtime?.connect();
+      }
       setUnread(open && !document.hidden ? 0 : unreadFrom(refreshed));
       if (latestIncomingId > previousIncomingId) {
         playNotification();
       }
       markRead();
     } catch {
-      // The SSE reconnect will request durable history again on reconnect.
+      // Never reopen a stream with an expired token after a failed renewal.
+      if (epoch === generation && reconnectNeeded && !identityPending) {
+        recoveryFailures++;
+        recoveryTimer = window.setTimeout(
+          () => void recoverHistory(),
+          Math.min(30000, 1000 * 2 ** Math.min(recoveryFailures, 5)),
+        );
+      }
     } finally {
-      if (epoch === generation) recovering = false;
+      if (epoch === generation) {
+        recovering = false;
+        if (!identityPending && requestRevision !== identityRevision)
+          void recoverHistory();
+      }
     }
   }
 
@@ -660,6 +710,13 @@
   onMount(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== window.parent) return;
+      if (
+        event.data?.type === "webchat.ping" &&
+        event.origin === parentOrigin
+      ) {
+        tellParent({ type: "webchat.pong", id: event.data.id });
+        return;
+      }
       if (event.data?.type === "webchat.bootstrap") {
         parentOrigin = event.origin;
         bootstrap = {
@@ -716,7 +773,7 @@
     window.addEventListener("message", onMessage);
     window.addEventListener("focus", visible);
     document.addEventListener("visibilitychange", visible);
-    tellParent({ type: "webchat.ready" });
+    tellParent({ type: "webchat.ready", healthVersion: 1 });
     return () => {
       window.removeEventListener("storage", changedAccount);
       window.removeEventListener("message", onMessage);
@@ -732,6 +789,7 @@
     realtime?.close();
     clearTimeout(typingTimer);
     clearTimeout(agentTypingTimer);
+    clearTimeout(recoveryTimer);
     if (audioContext) void audioContext.close();
   });
 </script>

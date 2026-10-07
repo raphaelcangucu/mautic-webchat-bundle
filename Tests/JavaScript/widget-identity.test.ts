@@ -216,3 +216,94 @@ test("a host identity failure offers retry and never falls back to an anonymous 
     f.dom.window.close();
   }
 });
+
+test("after two hours, an expired stream waits for renewed identity and preserves history and an unsent draft", async () => {
+  const f = await fixture();
+  const streams: any[] = [];
+  class FakeStream {
+    onopen: any;
+    onmessage: any;
+    onerror: any;
+    closed = false;
+    constructor(readonly url: string) {
+      streams.push(this);
+    }
+    close() {
+      this.closed = true;
+    }
+  }
+  f.window.EventSource = FakeStream;
+  const data = (token: string) => ({
+    session: "a".repeat(32),
+    session_token: "resume-token",
+    widget: config,
+    realtime: {
+      token,
+      url: "https://chat.example/chat/realtime",
+      expires_at: new Date(f.window.Date.now() + 3600000).toISOString(),
+    },
+    messages: [
+      {
+        id: 1,
+        client_id: "history_1",
+        body: "Previous conversation",
+        direction: "visitor",
+        status: "sent",
+        timestamp: "2026-10-07T00:00:00Z",
+      },
+    ],
+  });
+  let fail = false;
+  f.window.fetch = async (_url: string, options: any) => {
+    f.requests.push(JSON.parse(options.body));
+    return {
+      ok: !fail,
+      json: async () =>
+        fail ? { code: "identity_invalid" } : data("new-scoped-token"),
+    };
+  };
+  try {
+    await f.command({ type: "webchat.command", action: "open" });
+    await f.command({
+      type: "webchat.command",
+      action: "identify",
+      user: { subject: "macro:42", identityToken: "first-token" },
+    });
+    streams[0].onopen();
+    await tick();
+    const input = f.window.document.querySelector("textarea");
+    input.value = "Not sent yet";
+    input.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+    await tick();
+    fail = true;
+    const openedAt = f.window.Date.now();
+    f.window.Date.now = () => openedAt + 2 * 3600000;
+    streams[0].onerror();
+    await tick();
+    assert.equal(
+      streams.length,
+      1,
+      "failed renewal must not reconnect with the expired credential",
+    );
+    assert.equal(streams[0].closed, true);
+    assert.match(f.window.document.body.textContent, /Previous conversation/);
+    assert.equal(input.value, "Not sent yet");
+    assert.equal(
+      f.posts.filter((p: any) => p.type === "webchat.identity.refresh").length,
+      2,
+    );
+    fail = false;
+    await f.command({
+      type: "webchat.command",
+      action: "identify",
+      user: { subject: "macro:42", identityToken: "renewed-token" },
+    });
+    assert.equal(streams.length, 2);
+    assert.match(streams[1].url, /new-scoped-token/);
+    assert.equal(f.requests.at(-1).identity_token, "renewed-token");
+    assert.equal(input.value, "Not sent yet");
+    assert.equal(f.window.document.querySelectorAll(".bubble").length, 1);
+  } finally {
+    f.window.close();
+  }
+});

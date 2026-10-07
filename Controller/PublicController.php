@@ -25,7 +25,7 @@ final class PublicController extends CommonController
         $script = <<<'JS'
 (function(){
   if(window.MauticWebChat)return;
-  var ready=false,pending=[],identity={},context={},layout={width:400,position:'right'},draft='',isOpen=false,audioContext=null,destroyed=false,lastContext='';
+  var ready=false,pending=[],identity={},context={},layout={width:400,position:'right'},draft='',isOpen=false,audioContext=null,destroyed=false,lastContext='',healthVersion=0,healthTimer=0,healthDeadline=0,probe=0,waitingProbe=0,recoveries=0,healthySince=0,retryButton=null;
   var frame=document.createElement('iframe');frame.src=FRAME_URL;frame.title='Atendimento';frame.setAttribute('allow','autoplay; clipboard-write');
   frame.style.cssText='position:fixed;z-index:2147483000;right:0;bottom:0;width:104px;height:104px;border:0;background:transparent;color-scheme:light;';
   frame.dataset.mauticWebchat='1';document.body.appendChild(frame);var targetOrigin=new URL(FRAME_URL).origin;
@@ -45,7 +45,7 @@ final class PublicController extends CommonController
   function primeSound(){unlockSound();}
   document.addEventListener('pointerdown',primeSound,{passive:true});
   document.addEventListener('keydown',primeSound,{passive:true});
-  function command(action,payload){var message=Object.assign({type:'webchat.command',action:action},payload||{});if(ready&&frame.contentWindow)frame.contentWindow.postMessage(message,targetOrigin);else pending.push(message);}
+  function command(action,payload){var message=Object.assign({type:'webchat.command',action:action},payload||{});if(ready&&frame.contentWindow)frame.contentWindow.postMessage(message,targetOrigin);else {if(pending.length>=64)pending.shift();pending.push(message);}}
   function safeUrl(value){try{var url=new URL(value);return /^https?:$/.test(url.protocol)&&!url.username&&!url.password?url.origin+url.pathname:'';}catch(error){return '';}}
   function pageContext(){var utm={};['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(function(key){var value=new URLSearchParams(location.search).get(key);if(value)utm[key]=value.slice(0,255);});return {pageUrl:safeUrl(location.href),pageTitle:String(document.title||'').trim().slice(0,160),referrer:safeUrl(document.referrer),utm:utm};}
   function siteContext(){return Object.assign({locale:document.documentElement.lang||navigator.language||'pt',appearance:document.documentElement.classList.contains('dark')?'dark':'light',fontFamily:getComputedStyle(document.body).fontFamily},context);}
@@ -61,17 +61,45 @@ final class PublicController extends CommonController
     isReady:function(){return ready;},
     open:function(){command('open');},close:function(){command('close');},toggle:function(){command('toggle');},
     openWithMessage:function(message){draft=String(message||'');command('open',{message:draft});},
-    identify:function(user){identity=Object.assign({},user||{});command('identify',{user:identity});},
+    identify:function(user){if((identity.subject||'')!==((user||{}).subject||''))draft='';identity=Object.assign({},user||{});command('identify',{user:identity});},
     configure:function(next){context=Object.assign({},context,next||{});refreshContext();},
     reset:function(){identity={};draft='';context.accountPending=false;pending=pending.filter(function(message){return message.action==='configure';});command('reset');},
-    destroy:function(){destroyed=true;contextObserver.disconnect();historyHooks.forEach(function(hook){if(history[hook.name]===hook.wrapper)history[hook.name]=hook.original;});window.removeEventListener('popstate',refreshContext);window.removeEventListener('pageshow',refreshContext);window.removeEventListener('message',onMessage);window.removeEventListener('resize',onViewportChange);document.removeEventListener('pointerdown',primeSound);document.removeEventListener('keydown',primeSound);if(window.visualViewport){window.visualViewport.removeEventListener('resize',onViewportChange);window.visualViewport.removeEventListener('scroll',onViewportChange);}if(audioContext)audioContext.close();frame.remove();delete window.MauticWebChat;}
+    destroy:function(){destroyed=true;stopHealth();clearRetry();document.removeEventListener('visibilitychange',visibilityHealth);window.removeEventListener('online',visibilityHealth);contextObserver.disconnect();historyHooks.forEach(function(hook){if(history[hook.name]===hook.wrapper)history[hook.name]=hook.original;});window.removeEventListener('popstate',refreshContext);window.removeEventListener('pageshow',refreshContext);window.removeEventListener('message',onMessage);window.removeEventListener('resize',onViewportChange);document.removeEventListener('pointerdown',primeSound);document.removeEventListener('keydown',primeSound);if(window.visualViewport){window.visualViewport.removeEventListener('resize',onViewportChange);window.visualViewport.removeEventListener('scroll',onViewportChange);}if(audioContext)audioContext.close();frame.remove();delete window.MauticWebChat;}
   };
+  function stopHealth(){clearTimeout(healthTimer);clearTimeout(healthDeadline);healthTimer=healthDeadline=0;waitingProbe=0;}
+  function clearRetry(){if(retryButton){retryButton.remove();retryButton=null;}frame.hidden=false;}
+  function recoverFrame(manual){
+    if(destroyed)return;stopHealth();ready=false;clearRetry();
+    if(manual)recoveries=0;
+    if(recoveries>=2){
+      frame.hidden=true;retryButton=document.createElement('button');retryButton.type='button';
+      var locale=String(siteContext().locale||'en');retryButton.textContent=locale.indexOf('pt')===0?'Reconectar atendimento':locale.indexOf('es')===0?'Reconectar atención':'Reconnect support';
+      retryButton.style.cssText='position:fixed;z-index:2147483000;bottom:24px;right:24px;padding:12px 16px;border:1px solid currentColor;border-radius:8px;background:Canvas;color:CanvasText;font:inherit;cursor:pointer;';
+      if(layout.position==='left'){retryButton.style.left='24px';retryButton.style.right='auto';}
+      retryButton.onclick=function(){recoverFrame(true);};document.body.appendChild(retryButton);
+      emit('error',{message:'WebChat frame is unavailable. Reconnect support to resume.',code:'frame_unresponsive',fatal:false});return;
+    }
+    recoveries++;healthySince=0;pending=[];
+    emit('error',{message:'Recovering an unresponsive WebChat frame.',code:'frame_unresponsive',attempt:recoveries,fatal:false});
+    frame.src=FRAME_URL;
+    healthDeadline=setTimeout(function(){recoverFrame(false);},15000);
+  }
+  function probeFrame(){
+    healthTimer=0;if(destroyed||document.hidden||!ready||healthVersion!==1)return;
+    waitingProbe=++probe;frame.contentWindow.postMessage({type:'webchat.ping',id:waitingProbe},targetOrigin);
+    healthDeadline=setTimeout(function(){if(!document.hidden)recoverFrame(false);else stopHealth();},5000);
+  }
+  function scheduleHealth(){stopHealth();if(!destroyed&&!document.hidden&&ready&&healthVersion===1)healthTimer=setTimeout(probeFrame,15000);}
+  function visibilityHealth(){if(document.hidden)stopHealth();else scheduleHealth();}
+  document.addEventListener('visibilitychange',visibilityHealth);window.addEventListener('online',visibilityHealth);
   window.MauticWebChat=api;
   function onMessage(event){if(event.source!==frame.contentWindow||event.origin!==targetOrigin)return;
     if(event.data&&event.data.type==='webchat.ready'){
-      ready=true;frame.contentWindow.postMessage(Object.assign({type:'webchat.bootstrap',siteOrigin:location.origin,user:identity,message:draft,context:siteContext()},pageContext()),targetOrigin);refreshContext();
-      pending.splice(0).forEach(function(message){frame.contentWindow.postMessage(message,targetOrigin);});emit('ready');
+      var restoreOpen=isOpen;ready=true;healthVersion=Number(event.data.healthVersion)||0;clearRetry();stopHealth();if(!healthySince)healthySince=Date.now();frame.contentWindow.postMessage(Object.assign({type:'webchat.bootstrap',siteOrigin:location.origin,user:identity,message:draft,context:siteContext()},pageContext()),targetOrigin);refreshContext();
+      pending.splice(0).forEach(function(message){frame.contentWindow.postMessage(message,targetOrigin);});if(restoreOpen)command('open');scheduleHealth();emit('ready');
     }
+    if(event.data&&event.data.type==='webchat.pong'&&event.data.id===waitingProbe){if(Date.now()-healthySince>=300000)recoveries=0;scheduleHealth();}
+    if(event.data&&event.data.type==='webchat.draft'&&String(event.data.subject||'')===String(identity.subject||''))draft=String(event.data.value||'').slice(0,4000);
     if(event.data&&event.data.type==='webchat.presentation'){layout.width=Math.min(480,Math.max(320,Number(event.data.width)||400));layout.position=event.data.position==='left'?'left':'right';frame.title=event.data.locale==='pt'?'Atendimento':event.data.locale==='es'?'Atención':'Support';placeFrame();}
     if(event.data&&event.data.type==='webchat.resize'){isOpen=!!event.data.open;placeFrame();}
     if(event.data&&event.data.type==='webchat.state')emit(event.data.open?'open':'close',{open:!!event.data.open});

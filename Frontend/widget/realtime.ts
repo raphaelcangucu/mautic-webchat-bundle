@@ -23,6 +23,11 @@ export class RealtimeClient {
   }
   connect(): void {
     this.close();
+    if (Date.parse(this.session.realtime.expires_at) <= Date.now()) {
+      this.handlers.status("offline");
+      this.handlers.event({ type: "auth.expired" });
+      return;
+    }
     this.handlers.status("connecting");
     const url = this.session.realtime.url.replace(/^ws/, "http");
     const separator = url.includes("?") ? "&" : "?";
@@ -30,19 +35,25 @@ export class RealtimeClient {
       `${url}${separator}token=${encodeURIComponent(this.session.realtime.token)}`,
     ));
     source.onopen = () => {
+      if (this.source !== source) return;
       this.online = true;
       this.handlers.status("online");
     };
     source.onmessage = (message) => {
+      if (this.source !== source) return;
       try {
         const event = JSON.parse(message.data);
-        if (event.type === "auth.expired") this.close();
+        if (event.type === "auth.expired") {
+          this.close();
+          this.handlers.status("offline");
+        }
         this.handlers.event(event);
       } catch {
         /* malformed event */
       }
     };
     source.onerror = () => {
+      if (this.source !== source) return;
       this.online = false;
       this.handlers.status("offline");
       // Native EventSource reconnects with Last-Event-ID; renew expired credentials.
