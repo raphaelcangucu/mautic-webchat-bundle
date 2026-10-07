@@ -26,6 +26,7 @@ return function (ContainerConfigurator $configurator): void {
     $services->set(\MauticPlugin\MauticWebChatBundle\Security\IdentityVerifier::class)->args([
         '%env(default:webchat_identity_empty:MAUTIC_WEBCHAT_IDENTITY_PUBLIC_KEY)%',
         '%env(default:webchat_identity_empty:MAUTIC_WEBCHAT_IDENTITY_ISSUER)%',
+        '%env(default:webchat_identity_empty:MAUTIC_WEBCHAT_IDENTITY_ADDITIONAL_ANCHORS)%',
     ]);
     $configurator->parameters()->set('webchat_identity_empty', '');
     $services->set(WidgetOrigin::class);
