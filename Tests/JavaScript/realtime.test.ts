@@ -43,6 +43,13 @@ const reply: ChatMessage = {
   timestamp: "2026-10-04T00:00:00Z",
 };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
+async function waitUntil(done: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2000;
+  while (!done()) {
+    assert.ok(Date.now() < deadline, "serial request queue did not finish");
+    await tick();
+  }
+}
 test("SSE + authenticated serial HTTP: 1000 UI updates produce one receipt, typing is throttled", async () => {
   Object.assign(globalThis, {
     EventSource: FakeEventSource,
@@ -85,7 +92,7 @@ test("SSE + authenticated serial HTTP: 1000 UI updates produce one receipt, typi
     client.typing(false, "Raphael");
     client.receipt("delivered", reply);
     client.receipt("read", { ...reply, id: 11 });
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await waitUntil(() => calls.length >= 3);
     assert.equal(calls.filter((e) => e.type === "message.read").length, 1);
     assert.equal(calls.filter((e) => e.type === "typing.started").length, 1);
     assert.equal(calls.filter((e) => e.type === "typing.stopped").length, 1);
@@ -131,7 +138,9 @@ test("command acknowledgement confirms a message even when its SSE delivery is m
       }),
       true,
     );
-    await tick();
+    await waitUntil(() =>
+      events.some((event) => event.type === "message.created"),
+    );
     assert.equal(events[0].type, "message.created");
     assert.equal(payload.page_url, "https://site.example/market/nfl");
     assert.equal(payload.page_title, "Bears vs Packers");
