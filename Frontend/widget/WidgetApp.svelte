@@ -27,6 +27,8 @@
   let identityPending = false;
   let accountActive = false;
   let accountError = false;
+  let identityRetried = false;
+  let identityRevision = 0;
   $: locale = normalizeLocale(context.locale || "pt");
   $: c = copy[locale];
   $: theme = resolveTheme(config.presentation, context, config.accent_color);
@@ -174,6 +176,12 @@
     tellParent({ type: "webchat.state", open });
     if (open) {
       markRead();
+      // The iframe launcher opens before the host's async identity refresh.
+      // Never start an account session with the credential left from a closed chat.
+      if (!started && accountActive) {
+        if (!identityPending) requestIdentityRefresh();
+        return;
+      }
       if (
         !started &&
         !identityPending &&
@@ -185,6 +193,18 @@
 
   function toggle(): void {
     setOpen(!open);
+  }
+
+  function requestIdentityRefresh(): void {
+    identityPending = true;
+    error = "";
+    tellParent({ type: "webchat.identity.refresh" });
+  }
+
+  function retryStart(): void {
+    identityRetried = false;
+    if (accountActive) requestIdentityRefresh();
+    else void start();
   }
 
   function identify(user: NonNullable<Bootstrap["user"]> = {}): void {
@@ -206,6 +226,7 @@
           ),
       );
     identity = { ...user };
+    identityRevision++;
     identityPending = false;
     localStorage.setItem(`mw-subject:${publicKey}`, subject);
     name = String(user.name || "");
@@ -244,6 +265,7 @@
     identity = {};
     identityPending = false;
     agentTyping = false;
+    identityRetried = false;
     agentOnline = false;
     connection = "connecting";
     clearTimeout(typingTimer);
@@ -287,6 +309,7 @@
     )
       return;
     const epoch = generation;
+    const requestRevision = identityRevision;
     error = "";
     const saved = stored();
     const resuming = !!saved.resume_session && !!saved.resume_token;
@@ -351,12 +374,25 @@
       );
       const data = await response.json();
       if (epoch !== generation) return;
-      if (!response.ok) throw new Error(apiError(data.code, locale));
+      if (!response.ok) {
+        if (
+          data.code === "identity_invalid" &&
+          accountActive &&
+          requestRevision === identityRevision &&
+          !identityRetried
+        ) {
+          identityRetried = true;
+          requestIdentityRefresh();
+          return;
+        }
+        throw new Error(apiError(data.code, locale));
+      }
       session = data as SessionData;
       config = session.widget;
       messages = session.messages;
       setUnread(open && !document.hidden ? 0 : unreadFrom(session));
       started = true;
+      identityRetried = false;
       localStorage.setItem(`mw-session:${publicKey}`, session.session);
       localStorage.setItem(`mw-token:${publicKey}`, session.session_token);
       if (!identity.subject) {
@@ -370,7 +406,18 @@
       if (epoch === generation)
         error = problem instanceof Error ? problem.message : c.startError;
     } finally {
-      if (epoch === generation) loading = false;
+      if (epoch === generation) {
+        loading = false;
+        // A renewal can arrive while the previous start is still in flight.
+        if (
+          open &&
+          !started &&
+          !identityPending &&
+          identity.identityToken &&
+          requestRevision !== identityRevision
+        )
+          void start();
+      }
     }
   }
 
@@ -757,13 +804,12 @@
                 ? c.starting
                 : c.account}
           </p>
-          {#if accountError}<button
-              class="primary"
-              on:click={() => tellParent({ type: "webchat.identity.refresh" })}
+          {#if accountError}<button class="primary" on:click={retryStart}
               >{c.start}</button
             >{/if}
           {#if error}<div class="error" role="alert">{error}</div>
-            <button class="primary" on:click={start}>{c.start}</button>{/if}
+            <button class="primary" on:click={retryStart}>{c.start}</button
+            >{/if}
         {:else}
           <form
             class:two-columns={theme.options.formLayout === "grid"}
