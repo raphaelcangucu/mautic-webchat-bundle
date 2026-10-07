@@ -222,3 +222,5 @@ O roteiro registrado cobre configuração, início da sessão, identificação, 
 The PHP/SSE migration fixes a read-receipt feedback loop that could saturate FPM. See [incident and validation](docs/INCIDENT-2026-10-04.md), [deployment and index guide](docs/OPERATIONS.md) and the [paired Inbox 1.4 change](https://github.com/raphaelcangucu/mautic-inbox-bundle).
 
 ![Mobile widget with durable read receipt and live replies](docs/screenshots/widget-sse-mobile.jpg)
+
+Additional CMS installations can be pinned with `MAUTIC_WEBCHAT_IDENTITY_ADDITIONAL_ANCHORS`, a JSON array of objects containing `issuer`, `public_key` (PEM), `widget`, `origins` (exact HTTPS origins), and `namespace`. Each anchor only accepts signatures in its registered scope. The original `MAUTIC_WEBCHAT_IDENTITY_PUBLIC_KEY` and `MAUTIC_WEBCHAT_IDENTITY_ISSUER` remain unchanged. Never obtain trust keys from an unverified token's issuer URL. Use separate subject namespaces for installations with different account databases.
