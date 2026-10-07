@@ -47,13 +47,29 @@ namespace {
     check('macro:42' === $emailContact->fields['cms_external_id'], 'Signed subject is assigned to the matched contact');
     [$service, $model] = service([], [1375 => new Lead()]);
     check($method->invoke($service, 'Visitor', 'qa@example.invalid', '', null, 'pt') instanceof Lead && 0 === $model->created, 'Visitor email match also reuses the contact');
-    foreach ([[3738 => new Lead(), 3739 => new Lead()], []] as $subjects) {
-        [$service, $model] = service($subjects, [1375 => new Lead(), 1376 => new Lead()]);
-        try { $method->invoke($service, 'Test Account', 'qa@example.invalid', '', 'macro:42', 'pt'); throw new \RuntimeException('Ambiguous identity accepted'); }
-        catch (\DomainException $e) { check('identity_invalid' === $e->getMessage() && 0 === $model->created, 'Ambiguous signed identities remain rejected'); }
-    }
-    [$service, $model] = service([], [1375 => new Lead(['cms_external_id' => 'macro:other'])]);
-    try { $method->invoke($service, 'Test Account', 'qa@example.invalid', '', 'macro:42', 'pt'); throw new \RuntimeException('Conflicting identity accepted'); }
-    catch (\DomainException $e) { check('identity_invalid' === $e->getMessage(), 'Existing conflicting subject remains protected'); }
+    $original = new Lead(['partner' => 'trafegar', 'stage' => 7, 'tags' => ['dep-d1', 'dep-d2']]);
+    $duplicate = new Lead();
+    [$service, $model] = service([], [3735 => $duplicate, 1384 => $original]);
+    check($method->invoke($service, 'Test Account', 'qa@example.invalid', '', 'macro:5', 'pt') === $original && 0 === $model->created, 'Duplicate verified email selects the lowest eligible contact ID despite reversed order');
+    check('macro:5' === $original->fields['cms_external_id'] && 'trafegar' === $original->fields['partner'] && 7 === $original->fields['stage'] && ['dep-d1', 'dep-d2'] === $original->fields['tags'], 'Account binding preserves original attribution and conversion fields');
+    check([] === $duplicate->fields, 'Duplicate contact remains untouched');
+    $bound = new Lead(['cms_external_id' => 'macro:42']);
+    $boundDuplicate = new Lead(['cms_external_id' => 'macro:42']);
+    $olderEmail = new Lead();
+    [$service, $model] = service([3739 => $boundDuplicate, 3738 => $bound], [1375 => $olderEmail]);
+    check($method->invoke($service, 'Test Account', 'qa@example.invalid', '', 'macro:42', 'pt') === $bound && 0 === $model->created, 'Existing account binding takes priority and duplicate subjects use the lowest ID');
+    check([] === $olderEmail->fields && ['cms_external_id' => 'macro:42'] === $boundDuplicate->fields, 'Other matching contacts are not changed');
+    $conflicting = new Lead(['cms_external_id' => 'macro:other']);
+    $eligible = new Lead();
+    [$service, $model] = service([], [1376 => $eligible, 1375 => $conflicting]);
+    check($method->invoke($service, 'Test Account', 'qa@example.invalid', '', 'macro:42', 'pt') === $eligible && 0 === $model->created, 'Skip contacts belonging to another signed account');
+    [$service, $model] = service([], [1375 => $conflicting]);
+    $fresh = $method->invoke($service, 'Test Account', 'qa@example.invalid', '', 'macro:42', 'pt');
+    check($fresh !== $conflicting && 1 === $model->created && 'macro:42' === $fresh->fields['cms_external_id'], 'Valid accounts can chat even when all email matches belong to another account');
+    check(['cms_external_id' => 'macro:other'] === $conflicting->fields, 'Existing conflicting subject remains untouched');
+    $visitorFirst = new Lead();
+    $visitorDuplicate = new Lead();
+    [$service, $model] = service([], [1376 => $visitorDuplicate, 1375 => $visitorFirst]);
+    check($method->invoke($service, 'Visitor', 'qa@example.invalid', '', null, 'pt') === $visitorFirst && 0 === $model->created, 'Visitor duplicate email also reuses the first contact without creating more duplicates');
     echo "contact reuse regression checks passed (no database)\n";
 }

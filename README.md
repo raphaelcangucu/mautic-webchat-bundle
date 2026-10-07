@@ -81,6 +81,10 @@ Veja a arquitetura detalhada em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) e o
 
 O frontend usa Svelte 5 e TypeScript. Os assets são compilados localmente e distribuídos em `Assets/dist`. O tempo real roda em PHP; Node.js é necessário apenas para compilar e para o runtime opcional de IA Pi.
 
+## Contatos duplicados e identidade
+
+Depois de validar a identidade assinada pelo CMS, o chat prioriza o contato já vinculado à conta por `cms_external_id`. Se não houver vínculo, utiliza o contato de menor ID com o e-mail verificado, desde que ele não pertença a outra conta. Duplicidades não bloqueiam o atendimento: quando todos os contatos encontrados pertencem a outras contas, um novo contato é criado para a identidade validada. Os demais cadastros ficam intactos; parceiro, etapas e histórico do contato selecionado são preservados. A validação da assinatura e o isolamento do histórico por conta continuam obrigatórios.
+
 ## Instalação
 
 Instale o bundle em `plugins/MauticWebChatBundle`, instale as dependências do gateway e compile os frontends:

@@ -95,7 +95,8 @@ namespace {
     });
     $repo = new ChatSessionRepository();
     $em = new class implements \Doctrine\ORM\EntityManagerInterface {
-        public function persist(object $o): void {}
+        public array $persisted = [];
+        public function persist(object $o): void { $this->persisted[] = $o; }
         public function flush(): void {}
     };
     $ref = new \ReflectionClass(ChatService::class);
@@ -142,5 +143,22 @@ namespace {
     unset($g);
     $session->setContext($expired);
     check(!$session->tokenMatches($r2['session_token']) && $session->tokenMatches($firstToken), 'Expired device grant is rejected without revoking other browsers');
+    $original = new Lead(1384, ['email' => 'test@example.invalid', 'partner' => 'trafegar', 'stage' => 7]);
+    $duplicate = new Lead(3735, ['email' => 'test@example.invalid']);
+    $duplicateLeads = new \Mautic\LeadBundle\Model\LeadModel(new class([3735 => $duplicate, 1384 => $original]) {
+        public function __construct(private array $contacts) {}
+        public function getLeadsByFieldValue($f, $v): array { return array_filter($this->contacts, fn($c) => $c->getFieldValue($f) === $v); }
+    });
+    $ref->getProperty('leads')->setValue($service, $duplicateLeads);
+    $duplicateInput = ['visitor_id' => str_repeat('d', 32), 'site_origin' => 'https://macro.test', 'identity_token' => $signed('macro:5'), 'locale' => 'pt'];
+    $opened = $service->open($widget, $duplicateInput);
+    $persistedSessions = array_values(array_filter($em->persisted, fn($o) => $o instanceof ChatSession));
+    $duplicateSession = end($persistedSessions);
+    $repo->items[] = $duplicateSession;
+    $messages->history[spl_object_id($duplicateSession->getConversation())] = [['body' => 'Account with duplicate contacts']];
+    check($opened['identity_verified'] && $duplicateSession->getContact() === $original && $duplicateSession->getConversation()->contact === $original, 'A real signed open accepts duplicate emails and associates the first contact');
+    check($original->fields['cms_external_id'] === 'macro:5' && $original->fields['partner'] === 'trafegar' && $original->fields['stage'] === 7 && $duplicate->fields === ['email' => 'test@example.invalid'], 'Signed duplicate resolution preserves original attribution and leaves the duplicate untouched');
+    $reopened = $service->open($widget, array_replace($duplicateInput, ['visitor_id' => str_repeat('e', 32)]));
+    check($reopened['session'] === $opened['session'] && $reopened['messages'][0]['body'] === 'Account with duplicate contacts', 'Subsequent signed browser recovers the same conversation after duplicate resolution');
     echo "account continuity checks passed (real service; no database)\n";
 }

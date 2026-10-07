@@ -369,16 +369,23 @@ final class ChatService
         if (null === $subject && '' === $email && '' === $name && '' === $phone) {
             return null;
         }
-        // Mautic indexes repository results by contact ID, not by position.
-        $bySubject = null !== $subject ? array_values($this->leads->getRepository()->getLeadsByFieldValue('cms_external_id', $subject)) : [];
-        if (count($bySubject) > 1) throw new \DomainException('identity_invalid');
-        $matches = [] !== $bySubject ? $bySubject : ('' === $email ? [] : array_values($this->leads->getRepository()->getLeadsByFieldValue('email', $email)));
-        if (null !== $subject && count($matches) > 1) throw new \DomainException('identity_invalid');
-        $contact = 1 === count($matches) && $matches[0] instanceof Lead ? $matches[0] : $this->leads->getEntity();
-        if (null !== $subject && $contact instanceof Lead) {
-            $existingSubject = $contact->getFieldValue('cms_external_id');
-            if ($existingSubject && $existingSubject !== $subject) throw new \DomainException('identity_invalid');
+        // A verified account binding wins over email. Mautic keys results by
+        // contact ID; the lowest eligible ID is stable across repository order.
+        // Duplicate contacts must not prevent a valid account from chatting.
+        $bySubject = null !== $subject ? $this->leads->getRepository()->getLeadsByFieldValue('cms_external_id', $subject) : [];
+        $matches = [] !== $bySubject ? $bySubject : ('' === $email ? [] : $this->leads->getRepository()->getLeadsByFieldValue('email', $email));
+        ksort($matches, SORT_NUMERIC);
+        $contact = null;
+        foreach ($matches as $candidate) {
+            if (!$candidate instanceof Lead) continue;
+            $existingSubject = $candidate->getFieldValue('cms_external_id');
+            // Never overwrite a binding to another account, even with the same
+            // email. A fresh contact allows support without crossing identities.
+            if (null !== $subject && $existingSubject && $existingSubject !== $subject) continue;
+            $contact = $candidate;
+            break;
         }
+        $contact ??= $this->leads->getEntity();
         $parts = '' !== $name ? (preg_split('/\s+/', $name, 2) ?: []) : [];
         $fields = array_filter([
             'cms_external_id' => $subject,
