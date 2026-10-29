@@ -18,11 +18,15 @@ export function canUpgradeVisitor(
 
 // Another tab of the same site wrote the account key this frame shares with
 // it. Only a frame that holds an account follows, and only to a different
-// one: a frame with no account would wipe the key the other tab just wrote,
-// and that tab would reset in turn and close the chat it had just opened.
+// account another tab signed in with. A removal is never followed: logout
+// reaches each tab through its own host page, which resets the widget, while
+// a tab still running an older widget wipes the key on every login of this
+// one, and following that closed the chat the visitor had just opened.
 export function otherTabChangedAccount(
   currentSubject: string | undefined,
   storedSubject: string | null,
 ): boolean {
-  return !!currentSubject && (storedSubject ?? "") !== currentSubject;
+  return (
+    !!currentSubject && !!storedSubject && storedSubject !== currentSubject
+  );
 }

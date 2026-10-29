@@ -35,9 +35,13 @@ test("a frame without an account ignores another tab writing the shared account 
   assert.equal(otherTabChangedAccount("", "macro:42"), false);
   assert.equal(otherTabChangedAccount("", null), false);
 });
-test("a frame holding an account follows another tab's login, switch or logout", () => {
+test("a frame holding an account follows another tab signing in with a different one", () => {
   assert.equal(otherTabChangedAccount("macro:42", "macro:99"), true);
-  assert.equal(otherTabChangedAccount("macro:42", null), true);
-  assert.equal(otherTabChangedAccount("macro:42", ""), true);
   assert.equal(otherTabChangedAccount("macro:42", "macro:42"), false);
+});
+test("a frame holding an account ignores another tab removing the account key", () => {
+  // Logout reaches every tab through its own host page; a tab with an older
+  // widget wipes the key on each login, which closed the chat just opened.
+  assert.equal(otherTabChangedAccount("macro:42", null), false);
+  assert.equal(otherTabChangedAccount("macro:42", ""), false);
 });
