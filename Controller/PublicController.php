@@ -8,6 +8,7 @@ use Mautic\CoreBundle\Controller\CommonController;
 use MauticPlugin\MauticWebChatBundle\Application\ChatService;
 use MauticPlugin\MauticWebChatBundle\Entity\ChatWidget;
 use MauticPlugin\MauticWebChatBundle\Entity\ChatWidgetRepository;
+use MauticPlugin\MauticWebChatBundle\Security\WidgetContentSecurityPolicy;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -127,8 +128,7 @@ JS;
             'assetVersion' => (string) (@filemtime(__DIR__.'/../Assets/dist/widget-app.js') ?: time()),
         ]);
         $response->headers->remove('X-Frame-Options');
-        $ancestors = array_map(static fn (string $domain): string => 'https://'.$domain, $widget->getAllowedDomains());
-        $response->headers->set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; frame-ancestors 'self' ".implode(' ', $ancestors));
+        $response->headers->set('Content-Security-Policy', WidgetContentSecurityPolicy::header(WidgetContentSecurityPolicy::nonce(), $widget->getAllowedDomains()));
         $response->headers->set('Cache-Control', 'no-store');
         return $response;
     }
