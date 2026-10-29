@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   canUpgradeVisitor,
   identityScopeChanged,
+  otherTabChangedAccount,
 } from "../../Frontend/widget/identityScope";
 
 test("reloading the same signed account preserves its stored conversation", () => {
@@ -26,4 +27,17 @@ test("only an anonymous scope can carry its resume credential into login", () =>
   assert.equal(canUpgradeVisitor("macro:42", "", "macro:99"), false);
   assert.equal(canUpgradeVisitor("macro:42", "macro:42", ""), false);
   assert.equal(canUpgradeVisitor(undefined, null, ""), false);
+});
+test("a frame without an account ignores another tab writing the shared account key", () => {
+  // It would wipe the key the other tab just wrote, and that tab would reset
+  // and close the chat it had just opened.
+  assert.equal(otherTabChangedAccount(undefined, "macro:42"), false);
+  assert.equal(otherTabChangedAccount("", "macro:42"), false);
+  assert.equal(otherTabChangedAccount("", null), false);
+});
+test("a frame holding an account follows another tab's login, switch or logout", () => {
+  assert.equal(otherTabChangedAccount("macro:42", "macro:99"), true);
+  assert.equal(otherTabChangedAccount("macro:42", null), true);
+  assert.equal(otherTabChangedAccount("macro:42", ""), true);
+  assert.equal(otherTabChangedAccount("macro:42", "macro:42"), false);
 });

@@ -8,7 +8,11 @@
     type SiteContext,
   } from "./presentation";
   import { copy, normalizeLocale, apiError } from "./i18n";
-  import { canUpgradeVisitor, identityScopeChanged } from "./identityScope";
+  import {
+    canUpgradeVisitor,
+    identityScopeChanged,
+    otherTabChangedAccount,
+  } from "./identityScope";
   import type {
     Bootstrap,
     ChatMessage,
@@ -267,7 +271,11 @@
     if (bootstrap) bootstrap.context = context;
     if (started) void tick().then(recoverHistory);
   }
-  function reset(close = true, preserveVisitorResume = false): void {
+  function reset(
+    close = true,
+    preserveVisitorResume = false,
+    clearStorage = true,
+  ): void {
     generation++;
     loading = false;
     recovering = false;
@@ -293,22 +301,23 @@
     phone = "";
     body = "";
     error = "";
-    [
-      "session",
-      "token",
-      "name",
-      "email",
-      "phone",
-      "visitor",
-      "subject",
-    ].forEach((key) => {
-      if (
-        preserveVisitorResume &&
-        ["session", "token", "visitor"].includes(key)
-      )
-        return;
-      localStorage.removeItem(`mw-${key}:${publicKey}`);
-    });
+    if (clearStorage)
+      [
+        "session",
+        "token",
+        "name",
+        "email",
+        "phone",
+        "visitor",
+        "subject",
+      ].forEach((key) => {
+        if (
+          preserveVisitorResume &&
+          ["session", "token", "visitor"].includes(key)
+        )
+          return;
+        localStorage.removeItem(`mw-${key}:${publicKey}`);
+      });
     if (close) setOpen(false);
   }
 
@@ -763,11 +772,13 @@
       markRead();
     };
     const changedAccount = (event: StorageEvent) => {
+      // The other tab already owns the shared keys: drop this frame's state
+      // without clearing them, or that tab receives the removal and resets.
       if (
         event.key === `mw-subject:${publicKey}` &&
-        (event.newValue || "") !== (identity.subject || "")
+        otherTabChangedAccount(identity.subject, event.newValue)
       )
-        reset();
+        reset(true, false, false);
     };
     window.addEventListener("storage", changedAccount);
     window.addEventListener("message", onMessage);
